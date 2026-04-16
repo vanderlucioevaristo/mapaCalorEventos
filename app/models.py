@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, Date
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy.orm import relationship
 from .database import Base
 
 class Local(Base):
@@ -11,6 +12,8 @@ class Local(Base):
     latitude = Column(Float)
     longitude = Column(Float)
 
+    eventos = relationship("Evento", back_populates="local")
+
 
 class Evento(Base):
     __tablename__ = "eventos"
@@ -22,4 +25,6 @@ class Evento(Base):
     data_fim = Column(Date)
     publico_estimado = Column(Integer)
     porte = Column(String)
-    local_id = Column(Integer)
+    local_id = Column(Integer, ForeignKey("locais.id"))
+
+    local = relationship("Local", back_populates="eventos")
