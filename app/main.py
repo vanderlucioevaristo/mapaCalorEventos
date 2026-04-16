@@ -21,9 +21,44 @@ app = FastAPI()
 # uvicorn mapaCalorEventos.app.main:app --reload
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def home():
-    return {"msg": "API Eventos BH 🚀"}
+    return """
+    <html>
+    <head>
+        <title>Eventos BH</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }
+            .page { max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
+            h1 { margin-top: 0; color: #1f2937; }
+            p { color: #4b5563; font-size: 16px; line-height: 1.6; }
+            .menu { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }
+            .card { flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+            .card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }
+            .card h2 { margin: 0 0 10px; font-size: 22px; }
+            .card p { margin: 0; color: #374151; }
+            .footer { margin-top: 32px; font-size: 14px; color: #6b7280; }
+        </style>
+    </head>
+    <body>
+        <div class="page">
+            <h1>MapaCalorEventos BH</h1>
+            <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
+            <div class="menu">
+                <a class="card" href="/mapa">
+                    <h2>Mapa de Eventos</h2>
+                    <p>Visualize a localização de cada evento no mapa de Belo Horizonte com cores por região.</p>
+                </a>
+                <a class="card" href="/calendario">
+                    <h2>Calendário de Eventos</h2>
+                    <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
+                </a>
+            </div>
+            <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados.</div>
+        </div>
+    </body>
+    </html>
+    """
 
 
 @app.get("/eventos")
@@ -136,9 +171,9 @@ def calendario_eventos():
             .header h1 { margin: 0; }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
-            table { border-collapse: collapse; width: 100%; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-            th { background-color: #f2f2f2; }
+            th { background-color: #f2f2f2; font-size: 16px; }
             .evento { margin: 2px 0; padding: 2px; border-radius: 3px; }
         </style>
     </head>
@@ -160,48 +195,46 @@ def calendario_eventos():
     # Cabeçalhos dos meses
     for ano_mes, mes in meses_ordenados:
         nome_mes = meses_pt[mes]
-        html += f"<th>{nome_mes} {ano_mes}</th>"
+        html += f"<th style='text-align: center;'>{nome_mes} {ano_mes}</th>"
     html += "</tr>"
 
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
         html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small></td>"
+        
         for ano_mes, mes in meses_ordenados:
-            cell_content = '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">'
+            # Obter todos os eventos deste mês para este local
+            eventos_do_mes = eventos_por_local_mes.get((local.nome, (ano_mes, mes)), [])
             
-            # Cabeçalho do calendário
-            cell_content += '<tr><th style="border: 1px solid #ddd; padding: 2px;">Seg</th><th style="border: 1px solid #ddd; padding: 2px;">Ter</th><th style="border: 1px solid #ddd; padding: 2px;">Qua</th><th style="border: 1px solid #ddd; padding: 2px;">Qui</th><th style="border: 1px solid #ddd; padding: 2px;">Sex</th><th style="border: 1px solid #ddd; padding: 2px;">Sab</th><th style="border: 1px solid #ddd; padding: 2px;">Dom</th></tr>'
-            
-            # Gerar calendário
-            import calendar as cal_module
-            mes_cal = cal_module.monthcalendar(ano_mes, mes)
-            
-            for semana in mes_cal:
-                cell_content += '<tr>'
-                for dia in semana:
-                    if dia == 0:
-                        cell_content += '<td style="border: 1px solid #ddd; padding: 2px; height: 80px;"></td>'
+            if eventos_do_mes:
+                # Agrupar eventos por período (mesmo dia de início e fim)
+                eventos_agrupados = {}
+                for evento in eventos_do_mes:
+                    chave = (evento.data_inicio.day, evento.data_fim.day)
+                    if chave not in eventos_agrupados:
+                        eventos_agrupados[chave] = []
+                    eventos_agrupados[chave].append(evento)
+                
+                cell_content = f'<div style="background-color: {cor_regiao}; color: white; padding: 8px; border-radius: 5px; font-size: 11px;">'
+                cell_content += f'<div style="font-weight: bold; margin-bottom: 5px; text-align: center;">{len(eventos_do_mes)} evento(s)</div>'
+                
+                for (dia_inicio, dia_fim), eventos_periodo in eventos_agrupados.items():
+                    if dia_inicio == dia_fim:
+                        cell_content += f'<div style="margin: 3px 0; padding: 3px; background-color: rgba(255,255,255,0.2); border-radius: 3px;">'
+                        cell_content += f'<b>Dia {dia_inicio}:</b><br>'
                     else:
-                        # Obter eventos deste dia
-                        eventos_do_dia = []
-                        for evento in eventos_por_local_mes.get((local.nome, (ano_mes, mes)), []):
-                            if evento.data_inicio.day <= dia <= evento.data_fim.day:
-                                eventos_do_dia.append(evento)
-                        
-                        if eventos_do_dia:
-                            # Célula com eventos
-                            cell_content += f'<td style="border: 1px solid #ddd; padding: 2px; height: 80px; background-color: {cor_regiao}; color: white; font-size: 9px; vertical-align: top; overflow: auto;">'
-                            cell_content += f'<div style="font-weight: bold; margin-bottom: 2px;">{dia}</div>'
-                            for evento in eventos_do_dia:
-                                cell_content += f'<div style="font-size: 8px; margin: 2px 0; padding: 2px; background-color: rgba(0,0,0,0.3); border-radius: 2px;"><b>{evento.nome}</b><br>{evento.data_inicio.strftime("%d/%m")} - {evento.data_fim.strftime("%d/%m")}<br>👥 {evento.publico_estimado}</div>'
-                            cell_content += '</td>'
-                        else:
-                            # Célula sem eventos
-                            cell_content += f'<td style="border: 1px solid #ddd; padding: 2px; height: 80px; vertical-align: top;">{dia}</td>'
-                cell_content += '</tr>'
-            
-            cell_content += '</table>'
+                        cell_content += f'<div style="margin: 3px 0; padding: 3px; background-color: rgba(255,255,255,0.2); border-radius: 3px;">'
+                        cell_content += f'<b>Dias {dia_inicio}-{dia_fim}:</b><br>'
+                    
+                    for evento in eventos_periodo:
+                        cell_content += f'• {evento.nome}<br>'
+                        cell_content += f'<small>👥 {evento.publico_estimado} pessoas</small><br>'
+                    cell_content += '</div>'
+                
+                cell_content += '</div>'
+            else:
+                cell_content = '<div style="background-color: #f9f9f9; padding: 8px; border-radius: 5px; text-align: center; color: #666;">Sem eventos</div>'
             
             html += f"<td style='padding: 2px; vertical-align: top;'>{cell_content}</td>"
         html += "</tr>"
