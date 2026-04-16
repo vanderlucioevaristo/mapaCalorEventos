@@ -1,0 +1,19 @@
+LOCAL;ENDERECO;REGIAO;LATITUDE;LONGITUDE;EVENTO;DESCRICAO;DATA_INICIO;DATA_FIM;PUBLICO_ESTIMADO;PORTE_EVENTO
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Movemente 2026;Evento de educação reunindo gestores, educadores e empresas do setor;26/02/2026;28/02/2026;8000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Festival do Japão em Minas;Festival cultural com gastronomia, oficinas e cultura japonesa;13/03/2026;15/03/2026;20000;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;REVES 2026;Seminário sobre reciclagem veicular e sustentabilidade;13/03/2026;13/03/2026;1500;Pequeno
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Baile da Arena;Festival de música urbana com artistas nacionais;21/03/2026;21/03/2026;10000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Minas Game Fest;Evento de tecnologia e games;18/06/2026;19/06/2026;12000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Beauty Fair Professional;Feira do setor de beleza e cosméticos;05/07/2026;06/07/2026;9000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Expo Hospital Brasil;Feira e congresso da área da saúde;11/08/2026;13/08/2026;15000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Feira Minasparts;Feira do setor automotivo;30/09/2026;01/10/2026;7000;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.9690;Congresso Brasileiro de Direito Administrativo;Evento jurídico nacional;08/10/2026;10/10/2026;5000;Pequeno
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Cristo é o Show 2026;Evento religioso musical de grande porte;03/05/2026;03/05/2026;50000;Megaevento
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Histórias BH 2026;Festival/show com grandes artistas brasileiros;12/09/2026;13/09/2026;55000;Megaevento
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Cruzeiro x Universidad Católica;Partida de futebol internacional;15/04/2026;15/04/2026;40000;Grande
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;InkSpire Tattoo Convention;Convenção de tatuagem com artistas nacionais e internacionais;13/03/2026;15/03/2026;6000;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Claudia Leitte - Turnê Intemporal;Show musical;14/03/2026;14/03/2026;3000;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Jorge Vercillo - JV30;Show comemorativo;27/03/2026;27/03/2026;2500;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Carmina Burana Ballet;Espetáculo de dança clássica;10/04/2026;11/04/2026;3200;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Bruna Louise Stand-up;Show de comédia;08/05/2026;10/05/2026;4500;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Whindersson Nunes;Show de stand-up comedy;06/11/2026;08/11/2026;9000;Médio
