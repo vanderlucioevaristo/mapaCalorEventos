@@ -104,6 +104,8 @@ def calendario_eventos():
 
     # Agrupar eventos por local e mês
     eventos_por_local_mes = {}
+    dias_com_eventos = {}  # Para rastrear quais dias têm eventos
+    
     for evento in eventos:
         local_nome = evento.local.nome
         mes = (evento.data_inicio.year, evento.data_inicio.month)
@@ -111,6 +113,10 @@ def calendario_eventos():
         if chave not in eventos_por_local_mes:
             eventos_por_local_mes[chave] = []
         eventos_por_local_mes[chave].append(evento)
+        
+        # Marcar todos os dias do período do evento
+        for dia in range(evento.data_inicio.day, evento.data_fim.day + 1):
+            dias_com_eventos[(local_nome, evento.data_inicio.year, evento.data_inicio.month, dia)] = True
 
     # Cores por região
     cores = {
@@ -125,7 +131,11 @@ def calendario_eventos():
         <title>Calendário de Eventos BH</title>
         <style>
             body { font-family: Arial, sans-serif; }
-            .legenda { position: fixed; top: 10px; right: 10px; background: white; border: 2px solid grey; padding: 10px; }
+            .header { display: flex; align-items: center; gap: 20px; margin: 20px; }
+            .logo { width: 150px; height: 150px; }
+            .header h1 { margin: 0; }
+            .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
+            .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             table { border-collapse: collapse; width: 100%; margin: 20px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; }
@@ -133,12 +143,14 @@ def calendario_eventos():
         </style>
     </head>
     <body>
-        <h1>Calendário de Eventos de Belo Horizonte</h1>
+        <div class="header">
+            <img class="logo" src="https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg" alt="Logo BH">
+            <h1>Calendário de Eventos de Belo Horizonte</h1>
+        </div>
         <div class="legenda">
-            <b>Regiões</b><br>
-            <span style="color: blue;">Oeste</span><br>
-            <span style="color: green;">Pampulha</span><br>
-            <span style="color: orange;">Centro</span>
+            <div class="regiao-box" style="background-color: blue;">Regional Oeste</div>
+            <div class="regiao-box" style="background-color: green;">Regional Pampulha</div>
+            <div class="regiao-box" style="background-color: orange;">Regional Centro</div>
         </div>
         <table>
             <tr>
@@ -154,15 +166,57 @@ def calendario_eventos():
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
-        html += f"<tr><td style='background-color: {cor_regiao}; color: white;'><b>{local.nome}</b><br><small>({local.regiao})</small></td>"
+        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small></td>"
         for ano_mes, mes in meses_ordenados:
-            cell_content = ""
-            eventos_mes = eventos_por_local_mes.get((local.nome, (ano_mes, mes)), [])
-            for evento in eventos_mes:
-                cor = cores.get(local.regiao, "gray")
-                cell_content += f'<div class="evento" style="background-color: {cor}; color: white;">{evento.nome}<br>{evento.data_inicio.strftime("%d/%m")} - {evento.data_fim.strftime("%d/%m")}</div>'
-            html += f"<td>{cell_content}</td>"
+            cell_content = '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">'
+            
+            # Cabeçalho do calendário
+            cell_content += '<tr><th style="border: 1px solid #ddd; padding: 2px;">Seg</th><th style="border: 1px solid #ddd; padding: 2px;">Ter</th><th style="border: 1px solid #ddd; padding: 2px;">Qua</th><th style="border: 1px solid #ddd; padding: 2px;">Qui</th><th style="border: 1px solid #ddd; padding: 2px;">Sex</th><th style="border: 1px solid #ddd; padding: 2px;">Sab</th><th style="border: 1px solid #ddd; padding: 2px;">Dom</th></tr>'
+            
+            # Gerar calendário
+            import calendar as cal_module
+            mes_cal = cal_module.monthcalendar(ano_mes, mes)
+            
+            for semana in mes_cal:
+                cell_content += '<tr>'
+                for dia in semana:
+                    if dia == 0:
+                        cell_content += '<td style="border: 1px solid #ddd; padding: 2px; height: 80px;"></td>'
+                    else:
+                        # Obter eventos deste dia
+                        eventos_do_dia = []
+                        for evento in eventos_por_local_mes.get((local.nome, (ano_mes, mes)), []):
+                            if evento.data_inicio.day <= dia <= evento.data_fim.day:
+                                eventos_do_dia.append(evento)
+                        
+                        if eventos_do_dia:
+                            # Célula com eventos
+                            cell_content += f'<td style="border: 1px solid #ddd; padding: 2px; height: 80px; background-color: {cor_regiao}; color: white; font-size: 9px; vertical-align: top; overflow: auto;">'
+                            cell_content += f'<div style="font-weight: bold; margin-bottom: 2px;">{dia}</div>'
+                            for evento in eventos_do_dia:
+                                cell_content += f'<div style="font-size: 8px; margin: 2px 0; padding: 2px; background-color: rgba(0,0,0,0.3); border-radius: 2px;"><b>{evento.nome}</b><br>{evento.data_inicio.strftime("%d/%m")} - {evento.data_fim.strftime("%d/%m")}<br>👥 {evento.publico_estimado}</div>'
+                            cell_content += '</td>'
+                        else:
+                            # Célula sem eventos
+                            cell_content += f'<td style="border: 1px solid #ddd; padding: 2px; height: 80px; vertical-align: top;">{dia}</td>'
+                cell_content += '</tr>'
+            
+            cell_content += '</table>'
+            
+            html += f"<td style='padding: 2px; vertical-align: top;'>{cell_content}</td>"
         html += "</tr>"
+
+    # Adicionar rodapé com contagem de eventos
+    total_eventos = len(eventos)
+    html += f"""
+    <tr>
+        <td colspan="{len(meses_ordenados) + 1}" style="text-align: left; padding: 20px;">
+            <div style="background-color: red; color: white; font-weight: bold; padding: 20px; border-radius: 5px; display: inline-block; min-width: 300px; font-size: 18px;">
+                Total de Eventos Cadastrados: {total_eventos}
+            </div>
+        </td>
+    </tr>
+    """
 
     html += "</table></body></html>"
     return html
