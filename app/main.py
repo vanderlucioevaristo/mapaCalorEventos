@@ -1,11 +1,12 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local
 import folium
 import calendar
 from datetime import datetime
+from typing import Optional
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -54,12 +55,200 @@ def home():
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
+                <a class="card" href="/cadastro">
+                    <h2>Cadastrar Evento/Local</h2>
+                    <p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p>
+                </a>
             </div>
             <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados.</div>
         </div>
     </body>
     </html>
     """
+
+
+@app.get("/cadastro", response_class=HTMLResponse)
+def tela_cadastro(msg: Optional[str] = None):
+    db: Session = SessionLocal()
+    try:
+        locais = db.query(Local).order_by(Local.nome).all()
+
+        msg_html = ""
+        if msg == "local_ok":
+            msg_html = '<div class="msg ok">Local cadastrado com sucesso.</div>'
+        elif msg == "evento_ok":
+            msg_html = '<div class="msg ok">Evento cadastrado com sucesso.</div>'
+        elif msg == "data_invalida":
+            msg_html = '<div class="msg erro">Data inválida. Use o formato correto da tela.</div>'
+        elif msg == "periodo_invalido":
+            msg_html = '<div class="msg erro">A data final não pode ser menor que a data inicial.</div>'
+        elif msg == "local_invalido":
+            msg_html = '<div class="msg erro">Selecione um local válido para o evento.</div>'
+
+        locais_options = "".join(
+            [f'<option value="{local.id}">{local.nome} ({local.regiao})</option>' for local in locais]
+        )
+
+        return f"""
+        <html>
+        <head>
+            <title>Cadastro de Eventos e Locais</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f7fafc; margin: 0; padding: 24px; }}
+                .container {{ max-width: 1100px; margin: 0 auto; }}
+                h1 {{ color: #1f2937; margin-bottom: 8px; }}
+                .subtitle {{ color: #4b5563; margin-top: 0; margin-bottom: 24px; }}
+                .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
+                .card {{ background: white; border-radius: 12px; padding: 20px; box-shadow: 0 10px 24px rgba(0,0,0,0.08); }}
+                label {{ display: block; font-weight: 600; margin-bottom: 6px; color: #111827; }}
+                input, select, textarea {{ width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 14px; box-sizing: border-box; }}
+                textarea {{ min-height: 90px; resize: vertical; }}
+                button {{ background: #0f766e; color: white; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 700; }}
+                button:hover {{ background: #115e59; }}
+                .back {{ display: inline-block; margin-top: 20px; color: #2563eb; text-decoration: none; }}
+                .msg {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }}
+                .ok {{ background: #dcfce7; color: #166534; }}
+                .erro {{ background: #fee2e2; color: #991b1b; }}
+                @media (max-width: 900px) {{
+                    .grid {{ grid-template-columns: 1fr; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Cadastro de Eventos e Locais</h1>
+                <p class="subtitle">Cadastre primeiro o local de execução e depois associe eventos a ele.</p>
+                {msg_html}
+                <div class="grid">
+                    <div class="card">
+                        <h2>Novo Local</h2>
+                        <form method="post" action="/cadastro/local">
+                            <label>Nome do local</label>
+                            <input name="nome" required />
+
+                            <label>Endereço</label>
+                            <input name="endereco" required />
+
+                            <label>Região</label>
+                            <select name="regiao" required>
+                                <option value="Centro">Centro</option>
+                                <option value="Oeste">Oeste</option>
+                                <option value="Pampulha">Pampulha</option>
+                                <option value="Outra">Outra</option>
+                            </select>
+
+                            <label>Latitude</label>
+                            <input type="number" step="any" name="latitude" required />
+
+                            <label>Longitude</label>
+                            <input type="number" step="any" name="longitude" required />
+
+                            <button type="submit">Salvar local</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h2>Novo Evento</h2>
+                        <form method="post" action="/cadastro/evento">
+                            <label>Nome do evento</label>
+                            <input name="nome" required />
+
+                            <label>Descrição</label>
+                            <textarea name="descricao" required></textarea>
+
+                            <label>Data de início</label>
+                            <input type="date" name="data_inicio" required />
+
+                            <label>Data de fim</label>
+                            <input type="date" name="data_fim" required />
+
+                            <label>Público estimado</label>
+                            <input type="number" name="publico_estimado" min="0" required />
+
+                            <label>Porte do evento</label>
+                            <input name="porte" placeholder="Pequeno, Médio, Grande..." required />
+
+                            <label>Local de execução</label>
+                            <select name="local_id" required>
+                                {locais_options}
+                            </select>
+
+                            <button type="submit">Salvar evento</button>
+                        </form>
+                    </div>
+                </div>
+                <a class="back" href="/">Voltar para a página inicial</a>
+            </div>
+        </body>
+        </html>
+        """
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/local")
+def cadastrar_local(
+    nome: str = Form(...),
+    endereco: str = Form(...),
+    regiao: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+):
+    db: Session = SessionLocal()
+    try:
+        local = Local(
+            nome=nome,
+            endereco=endereco,
+            regiao=regiao,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        db.add(local)
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=local_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/evento")
+def cadastrar_evento(
+    nome: str = Form(...),
+    descricao: str = Form(...),
+    data_inicio: str = Form(...),
+    data_fim: str = Form(...),
+    publico_estimado: int = Form(...),
+    porte: str = Form(...),
+    local_id: int = Form(...),
+):
+    db: Session = SessionLocal()
+    try:
+        local = db.query(Local).filter(Local.id == local_id).first()
+        if not local:
+            return RedirectResponse(url="/cadastro?msg=local_invalido", status_code=303)
+
+        try:
+            data_inicio_dt = datetime.strptime(data_inicio, "%Y-%m-%d").date()
+            data_fim_dt = datetime.strptime(data_fim, "%Y-%m-%d").date()
+        except ValueError:
+            return RedirectResponse(url="/cadastro?msg=data_invalida", status_code=303)
+
+        if data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/cadastro?msg=periodo_invalido", status_code=303)
+
+        evento = Evento(
+            nome=nome,
+            descricao=descricao,
+            data_inicio=data_inicio_dt,
+            data_fim=data_fim_dt,
+            publico_estimado=publico_estimado,
+            porte=porte,
+            local_id=local_id,
+        )
+        db.add(evento)
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=evento_ok", status_code=303)
+    finally:
+        db.close()
 
 
 @app.get("/eventos")
