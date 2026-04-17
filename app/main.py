@@ -20,7 +20,7 @@ app = FastAPI()
 # python3 mapaCalorEventos/app/main.py
 
 # uvicorn mapaCalorEventos.app.main:app --reload --port 8001
-# python3 mapaCalorEventos/app/seed.py
+# .venv/bin/python -m mapaCalorEventos.app.seed
 
 @app.get("/", response_class=HTMLResponse)
 def home():
