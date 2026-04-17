@@ -6,6 +6,7 @@ from .models import Evento, Local
 import folium
 import calendar
 from datetime import datetime
+from html import escape
 from typing import Optional
 
 # Meses em português
@@ -163,35 +164,52 @@ def render_tela_cadastro_manutencao(
 
         locais_existentes_html = ""
         for local in locais:
+            local_nome = escape(local.nome or "")
+            local_endereco = escape(local.endereco or "")
+            local_regiao = escape(local.regiao or "")
             locais_existentes_html += f"""
-            <div class="item-card">
-                <h3>Local #{local.id}</h3>
-                <form method="post" action="/cadastro/local/{local.id}/editar">
-                    <label>Nome</label>
-                    <input name="nome" value="{local.nome}" required />
+            <div class="item-row">
+                <div class="item-name">{local_nome}</div>
+                <div class="item-actions">
+                    <button class="btn-secondary" type="button" onclick="openModal('local-modal-{local.id}')">Editar</button>
+                    <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
+                        <button class="btn-danger" type="submit">Excluir</button>
+                    </form>
+                </div>
+            </div>
+            <div id="local-modal-{local.id}" class="modal-overlay" onclick="closeModalOnOverlay(event, 'local-modal-{local.id}')">
+                <div class="modal-card">
+                    <h3>Editar Local</h3>
+                    <form method="post" action="/cadastro/local/{local.id}/editar">
+                        <label>Nome</label>
+                        <input name="nome" value="{local_nome}" required />
 
-                    <label>Endereço</label>
-                    <input name="endereco" value="{local.endereco}" required />
+                        <label>Endereço</label>
+                        <input name="endereco" value="{local_endereco}" required />
 
-                    <label>Região</label>
-                    <input name="regiao" value="{local.regiao}" required />
+                        <label>Região</label>
+                        <input name="regiao" value="{local_regiao}" required />
 
-                    <label>Latitude</label>
-                    <input type="number" step="any" name="latitude" value="{local.latitude}" required />
+                        <label>Latitude</label>
+                        <input type="number" step="any" name="latitude" value="{local.latitude}" required />
 
-                    <label>Longitude</label>
-                    <input type="number" step="any" name="longitude" value="{local.longitude}" required />
+                        <label>Longitude</label>
+                        <input type="number" step="any" name="longitude" value="{local.longitude}" required />
 
-                    <button type="submit">Atualizar local</button>
-                </form>
-                <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
-                    <button class="btn-danger" type="submit">Excluir local</button>
-                </form>
+                        <div class="modal-actions">
+                            <button type="submit">Salvar</button>
+                            <button class="btn-secondary" type="button" onclick="closeModal('local-modal-{local.id}')">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             """
 
         eventos_existentes_html = ""
         for evento in eventos:
+            evento_nome = escape(evento.nome or "")
+            evento_descricao = escape(evento.descricao or "")
+            evento_porte = escape(evento.porte or "")
             evento_options = "".join(
                 [
                     f'<option value="{local.id}" {"selected" if local.id == evento.local_id else ""}>{local.nome} ({local.regiao})</option>'
@@ -199,37 +217,48 @@ def render_tela_cadastro_manutencao(
                 ]
             )
             eventos_existentes_html += f"""
-            <div class="item-card">
-                <h3>Evento #{evento.id}</h3>
-                <form method="post" action="/cadastro/evento/{evento.id}/editar">
-                    <label>Nome</label>
-                    <input name="nome" value="{evento.nome}" required />
+            <div class="item-row">
+                <div class="item-name">{evento_nome}</div>
+                <div class="item-actions">
+                    <button class="btn-secondary" type="button" onclick="openModal('evento-modal-{evento.id}')">Editar</button>
+                    <form method="post" action="/cadastro/evento/{evento.id}/excluir" onsubmit="return confirm('Excluir evento?');">
+                        <button class="btn-danger" type="submit">Excluir</button>
+                    </form>
+                </div>
+            </div>
+            <div id="evento-modal-{evento.id}" class="modal-overlay" onclick="closeModalOnOverlay(event, 'evento-modal-{evento.id}')">
+                <div class="modal-card">
+                    <h3>Editar Evento</h3>
+                    <form method="post" action="/cadastro/evento/{evento.id}/editar">
+                        <label>Nome</label>
+                        <input name="nome" value="{evento_nome}" required />
 
-                    <label>Descrição</label>
-                    <textarea name="descricao" required>{evento.descricao}</textarea>
+                        <label>Descrição</label>
+                        <textarea name="descricao" required>{evento_descricao}</textarea>
 
-                    <label>Data de início</label>
-                    <input type="date" name="data_inicio" value="{evento.data_inicio}" required />
+                        <label>Data de início</label>
+                        <input type="date" name="data_inicio" value="{evento.data_inicio}" required />
 
-                    <label>Data de fim</label>
-                    <input type="date" name="data_fim" value="{evento.data_fim}" required />
+                        <label>Data de fim</label>
+                        <input type="date" name="data_fim" value="{evento.data_fim}" required />
 
-                    <label>Público estimado</label>
-                    <input type="number" name="publico_estimado" min="0" value="{evento.publico_estimado}" required />
+                        <label>Público estimado</label>
+                        <input type="number" name="publico_estimado" min="0" value="{evento.publico_estimado}" required />
 
-                    <label>Porte</label>
-                    <input name="porte" value="{evento.porte}" required />
+                        <label>Porte</label>
+                        <input name="porte" value="{evento_porte}" required />
 
-                    <label>Local de execução</label>
-                    <select name="local_id" required>
-                        {evento_options}
-                    </select>
+                        <label>Local de execução</label>
+                        <select name="local_id" required>
+                            {evento_options}
+                        </select>
 
-                    <button type="submit">Atualizar evento</button>
-                </form>
-                <form method="post" action="/cadastro/evento/{evento.id}/excluir" onsubmit="return confirm('Excluir evento?');">
-                    <button class="btn-danger" type="submit">Excluir evento</button>
-                </form>
+                        <div class="modal-actions">
+                            <button type="submit">Salvar</button>
+                            <button class="btn-secondary" type="button" onclick="closeModal('evento-modal-{evento.id}')">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             """
 
@@ -408,16 +437,25 @@ def render_tela_cadastro_manutencao(
                 .list-card {{ margin-top: 20px; }}
                 .item-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fafafa; }}
                 .item-card h3 {{ margin-top: 0; color: #111827; }}
+                .item-row {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fafafa; }}
+                .item-name {{ font-weight: 700; color: #1f2937; }}
+                .item-actions {{ display: flex; gap: 8px; align-items: center; }}
+                .item-actions form {{ margin: 0; }}
                 label {{ display: block; font-weight: 600; margin-bottom: 6px; color: #111827; }}
                 input, select, textarea {{ width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 14px; box-sizing: border-box; }}
                 textarea {{ min-height: 90px; resize: vertical; }}
                 button {{ background: #0f766e; color: white; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 700; }}
                 button:hover {{ background: #115e59; }}
                 .actions {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+                .btn-secondary {{ background: #374151; }}
+                .btn-secondary:hover {{ background: #1f2937; }}
                 .btn-danger {{ background: #b91c1c; }}
                 .btn-danger:hover {{ background: #991b1b; }}
                 .pagination {{ display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }}
                 .page-link {{ text-decoration: none; background: #e5e7eb; color: #1f2937; padding: 6px 10px; border-radius: 6px; font-weight: 700; }}
+                .modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9998; padding: 24px; overflow: auto; }}
+                .modal-card {{ max-width: 560px; margin: 40px auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 14px 40px rgba(0,0,0,0.25); }}
+                .modal-actions {{ display: flex; gap: 8px; justify-content: flex-end; }}
                 .back {{ display: inline-block; margin-top: 20px; color: #2563eb; text-decoration: none; }}
                 .msg {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }}
                 .ok {{ background: #dcfce7; color: #166534; }}
@@ -442,6 +480,23 @@ def render_tela_cadastro_manutencao(
 
                 <a class="back" href="/">Voltar para a página inicial</a>
             </div>
+            <script>
+                function openModal(id) {{
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'block';
+                }}
+
+                function closeModal(id) {{
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                }}
+
+                function closeModalOnOverlay(event, id) {{
+                    if (event.target && event.target.id === id) {{
+                        closeModal(id);
+                    }}
+                }}
+            </script>
         </body>
         </html>
         """
