@@ -52,6 +52,10 @@ def home():
                     <h2>Mapa de Eventos</h2>
                     <p>Visualize a localização de cada evento no mapa de Belo Horizonte com cores por região.</p>
                 </a>
+                <a class="card" href="/mapa-locais">
+                    <h2>Mapa de Locais</h2>
+                    <p>Veja no mapa todos os locais de evento cadastrados, organizados por região.</p>
+                </a>
                 <a class="card" href="/calendario">
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
@@ -690,6 +694,51 @@ def excluir_evento(evento_id: int):
         return RedirectResponse(url="/manutencao?msg=evento_delete_ok", status_code=303)
     finally:
         db.close()
+
+
+@app.get("/mapa-locais", response_class=HTMLResponse)
+def mapa_locais():
+    db: Session = SessionLocal()
+    locais = db.query(Local).all()
+
+    mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+
+    cores = {
+        "Oeste": "blue",
+        "Pampulha": "green",
+        "Centro": "orange"
+    }
+
+    for local in locais:
+        cor = cores.get(local.regiao, "gray")
+        tooltip_text = f"{local.nome} — {local.regiao}"
+        popup_text = f"""
+        <b>{local.nome}</b><br>
+        Endereço: {local.endereco}<br>
+        Região: {local.regiao}<br>
+        Lat: {local.latitude}, Lon: {local.longitude}
+        """
+        folium.Marker(
+            location=[local.latitude, local.longitude],
+            popup=popup_text,
+            tooltip=tooltip_text,
+            icon=folium.Icon(color=cor)
+        ).add_to(mapa)
+
+    legenda_html = '''
+    <div style="position: fixed; 
+                top: 50px; left: 50px; width: 200px; 
+                background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
+                padding: 10px">
+    <b>Legenda - Região</b><br>
+    <i style="background: blue; width: 10px; height: 10px; display: inline-block;"></i> Oeste<br>
+    <i style="background: green; width: 10px; height: 10px; display: inline-block;"></i> Pampulha<br>
+    <i style="background: orange; width: 10px; height: 10px; display: inline-block;"></i> Centro<br>
+    </div>
+    '''
+    mapa.get_root().html.add_child(folium.Element(legenda_html))
+
+    return mapa._repr_html_()
 
 
 @app.get("/eventos")
