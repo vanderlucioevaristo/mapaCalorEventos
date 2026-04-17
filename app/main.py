@@ -742,7 +742,7 @@ def mapa_eventos():
     # Adicionar legenda
     legenda_html = '''
     <div style="position: fixed; 
-                bottom: 50px; left: 50px; width: 200px; height: 100px; 
+                top: 50px; left: 50px; width: 200px; 
                 background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
                 padding: 10px">
     <b>Legenda - Região</b><br>
