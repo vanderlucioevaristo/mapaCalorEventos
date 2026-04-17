@@ -72,22 +72,111 @@ def tela_cadastro(msg: Optional[str] = None):
     db: Session = SessionLocal()
     try:
         locais = db.query(Local).order_by(Local.nome).all()
+        eventos = db.query(Evento).join(Local).order_by(Evento.data_inicio.desc()).all()
 
         msg_html = ""
         if msg == "local_ok":
             msg_html = '<div class="msg ok">Local cadastrado com sucesso.</div>'
         elif msg == "evento_ok":
             msg_html = '<div class="msg ok">Evento cadastrado com sucesso.</div>'
+        elif msg == "local_edit_ok":
+            msg_html = '<div class="msg ok">Local atualizado com sucesso.</div>'
+        elif msg == "evento_edit_ok":
+            msg_html = '<div class="msg ok">Evento atualizado com sucesso.</div>'
+        elif msg == "local_delete_ok":
+            msg_html = '<div class="msg ok">Local excluído com sucesso.</div>'
+        elif msg == "evento_delete_ok":
+            msg_html = '<div class="msg ok">Evento excluído com sucesso.</div>'
         elif msg == "data_invalida":
             msg_html = '<div class="msg erro">Data inválida. Use o formato correto da tela.</div>'
         elif msg == "periodo_invalido":
             msg_html = '<div class="msg erro">A data final não pode ser menor que a data inicial.</div>'
         elif msg == "local_invalido":
             msg_html = '<div class="msg erro">Selecione um local válido para o evento.</div>'
+        elif msg == "registro_nao_encontrado":
+            msg_html = '<div class="msg erro">Registro não encontrado.</div>'
 
         locais_options = "".join(
             [f'<option value="{local.id}">{local.nome} ({local.regiao})</option>' for local in locais]
         )
+
+        locais_existentes_html = ""
+        for local in locais:
+            locais_existentes_html += f"""
+            <div class="item-card">
+                <h3>Local #{local.id}</h3>
+                <form method="post" action="/cadastro/local/{local.id}/editar">
+                    <label>Nome</label>
+                    <input name="nome" value="{local.nome}" required />
+
+                    <label>Endereço</label>
+                    <input name="endereco" value="{local.endereco}" required />
+
+                    <label>Região</label>
+                    <input name="regiao" value="{local.regiao}" required />
+
+                    <label>Latitude</label>
+                    <input type="number" step="any" name="latitude" value="{local.latitude}" required />
+
+                    <label>Longitude</label>
+                    <input type="number" step="any" name="longitude" value="{local.longitude}" required />
+
+                    <button type="submit">Atualizar local</button>
+                </form>
+                <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
+                    <button class="btn-danger" type="submit">Excluir local</button>
+                </form>
+            </div>
+            """
+
+        eventos_existentes_html = ""
+        for evento in eventos:
+            evento_options = "".join(
+                [
+                    f'<option value="{local.id}" {"selected" if local.id == evento.local_id else ""}>{local.nome} ({local.regiao})</option>'
+                    for local in locais
+                ]
+            )
+            eventos_existentes_html += f"""
+            <div class="item-card">
+                <h3>Evento #{evento.id}</h3>
+                <form method="post" action="/cadastro/evento/{evento.id}/editar">
+                    <label>Nome</label>
+                    <input name="nome" value="{evento.nome}" required />
+
+                    <label>Descrição</label>
+                    <textarea name="descricao" required>{evento.descricao}</textarea>
+
+                    <label>Data de início</label>
+                    <input type="date" name="data_inicio" value="{evento.data_inicio}" required />
+
+                    <label>Data de fim</label>
+                    <input type="date" name="data_fim" value="{evento.data_fim}" required />
+
+                    <label>Público estimado</label>
+                    <input type="number" name="publico_estimado" min="0" value="{evento.publico_estimado}" required />
+
+                    <label>Porte</label>
+                    <input name="porte" value="{evento.porte}" required />
+
+                    <label>Local de execução</label>
+                    <select name="local_id" required>
+                        {evento_options}
+                    </select>
+
+                    <button type="submit">Atualizar evento</button>
+                </form>
+                <form method="post" action="/cadastro/evento/{evento.id}/excluir" onsubmit="return confirm('Excluir evento?');">
+                    <button class="btn-danger" type="submit">Excluir evento</button>
+                </form>
+            </div>
+            """
+
+        if not locais_existentes_html:
+            locais_existentes_html = '<p class="vazio">Nenhum local cadastrado.</p>'
+
+        if not eventos_existentes_html:
+            eventos_existentes_html = '<p class="vazio">Nenhum evento cadastrado.</p>'
 
         return f"""
         <html>
@@ -100,15 +189,22 @@ def tela_cadastro(msg: Optional[str] = None):
                 .subtitle {{ color: #4b5563; margin-top: 0; margin-bottom: 24px; }}
                 .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
                 .card {{ background: white; border-radius: 12px; padding: 20px; box-shadow: 0 10px 24px rgba(0,0,0,0.08); }}
+                .list-card {{ margin-top: 20px; }}
+                .item-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fafafa; }}
+                .item-card h3 {{ margin-top: 0; color: #111827; }}
                 label {{ display: block; font-weight: 600; margin-bottom: 6px; color: #111827; }}
                 input, select, textarea {{ width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 14px; box-sizing: border-box; }}
                 textarea {{ min-height: 90px; resize: vertical; }}
                 button {{ background: #0f766e; color: white; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 700; }}
                 button:hover {{ background: #115e59; }}
+                .actions {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+                .btn-danger {{ background: #b91c1c; }}
+                .btn-danger:hover {{ background: #991b1b; }}
                 .back {{ display: inline-block; margin-top: 20px; color: #2563eb; text-decoration: none; }}
                 .msg {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }}
                 .ok {{ background: #dcfce7; color: #166534; }}
                 .erro {{ background: #fee2e2; color: #991b1b; }}
+                .vazio {{ color: #6b7280; font-style: italic; }}
                 @media (max-width: 900px) {{
                     .grid {{ grid-template-columns: 1fr; }}
                 }}
@@ -177,6 +273,17 @@ def tela_cadastro(msg: Optional[str] = None):
                         </form>
                     </div>
                 </div>
+
+                <div class="card list-card">
+                    <h2>Locais cadastrados (editar/excluir)</h2>
+                    {locais_existentes_html}
+                </div>
+
+                <div class="card list-card">
+                    <h2>Eventos cadastrados (editar/excluir)</h2>
+                    {eventos_existentes_html}
+                </div>
+
                 <a class="back" href="/">Voltar para a página inicial</a>
             </div>
         </body>
@@ -247,6 +354,106 @@ def cadastrar_evento(
         db.add(evento)
         db.commit()
         return RedirectResponse(url="/cadastro?msg=evento_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/local/{local_id}/editar")
+def editar_local(
+    local_id: int,
+    nome: str = Form(...),
+    endereco: str = Form(...),
+    regiao: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+):
+    db: Session = SessionLocal()
+    try:
+        local = db.query(Local).filter(Local.id == local_id).first()
+        if not local:
+            return RedirectResponse(url="/cadastro?msg=registro_nao_encontrado", status_code=303)
+
+        local.nome = nome
+        local.endereco = endereco
+        local.regiao = regiao
+        local.latitude = latitude
+        local.longitude = longitude
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=local_edit_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/local/{local_id}/excluir")
+def excluir_local(local_id: int):
+    db: Session = SessionLocal()
+    try:
+        local = db.query(Local).filter(Local.id == local_id).first()
+        if not local:
+            return RedirectResponse(url="/cadastro?msg=registro_nao_encontrado", status_code=303)
+
+        db.query(Evento).filter(Evento.local_id == local_id).delete(synchronize_session=False)
+        db.delete(local)
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=local_delete_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/evento/{evento_id}/editar")
+def editar_evento(
+    evento_id: int,
+    nome: str = Form(...),
+    descricao: str = Form(...),
+    data_inicio: str = Form(...),
+    data_fim: str = Form(...),
+    publico_estimado: int = Form(...),
+    porte: str = Form(...),
+    local_id: int = Form(...),
+):
+    db: Session = SessionLocal()
+    try:
+        evento = db.query(Evento).filter(Evento.id == evento_id).first()
+        if not evento:
+            return RedirectResponse(url="/cadastro?msg=registro_nao_encontrado", status_code=303)
+
+        local = db.query(Local).filter(Local.id == local_id).first()
+        if not local:
+            return RedirectResponse(url="/cadastro?msg=local_invalido", status_code=303)
+
+        try:
+            data_inicio_dt = datetime.strptime(data_inicio, "%Y-%m-%d").date()
+            data_fim_dt = datetime.strptime(data_fim, "%Y-%m-%d").date()
+        except ValueError:
+            return RedirectResponse(url="/cadastro?msg=data_invalida", status_code=303)
+
+        if data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/cadastro?msg=periodo_invalido", status_code=303)
+
+        evento.nome = nome
+        evento.descricao = descricao
+        evento.data_inicio = data_inicio_dt
+        evento.data_fim = data_fim_dt
+        evento.publico_estimado = publico_estimado
+        evento.porte = porte
+        evento.local_id = local_id
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=evento_edit_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/evento/{evento_id}/excluir")
+def excluir_evento(evento_id: int):
+    db: Session = SessionLocal()
+    try:
+        evento = db.query(Evento).filter(Evento.id == evento_id).first()
+        if not evento:
+            return RedirectResponse(url="/cadastro?msg=registro_nao_encontrado", status_code=303)
+
+        db.delete(evento)
+        db.commit()
+        return RedirectResponse(url="/cadastro?msg=evento_delete_ok", status_code=303)
     finally:
         db.close()
 
