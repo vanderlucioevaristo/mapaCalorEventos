@@ -16,10 +16,11 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 #para executar 
-# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos
-# source .venv/bin/activate
-# uvicorn mapaCalorEventos.app.main:app --reload
+# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
+# python3 mapaCalorEventos/app/main.py
 
+# uvicorn mapaCalorEventos.app.main:app --reload --port 8001
+# python3 mapaCalorEventos/app/seed.py
 
 @app.get("/", response_class=HTMLResponse)
 def home():
