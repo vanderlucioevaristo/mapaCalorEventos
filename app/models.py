@@ -2,6 +2,14 @@ from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
 
+
+class Regional(Base):
+    __tablename__ = "regionais"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, unique=True, nullable=False)
+
+
 class Local(Base):
     __tablename__ = "locais"
 

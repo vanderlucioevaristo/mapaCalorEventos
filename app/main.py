@@ -2,7 +2,7 @@ from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local
+from .models import Evento, Local, Regional
 import folium
 import calendar
 from datetime import datetime
@@ -14,6 +14,57 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
 Base.metadata.create_all(bind=engine)
+
+REGIONAIS_PADRAO = [
+    "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
+]
+
+CORES_REGIONAIS = {
+    "Barreiro": "red",
+    "Leste": "purple",
+    "Nordeste": "cadetblue",
+    "Noroeste": "darkgreen",
+    "Norte": "darkred",
+    "Oeste": "blue",
+    "Pampulha": "darkblue",
+    "Sul": "green",
+    "Venda Nova": "orange",
+}
+
+def seed_regionais():
+    db: Session = SessionLocal()
+    try:
+        for nome in REGIONAIS_PADRAO:
+            existe = db.query(Regional).filter(Regional.nome == nome).first()
+            if not existe:
+                db.add(Regional(nome=nome))
+        db.commit()
+    finally:
+        db.close()
+
+
+def cor_regional(nome_regional: str) -> str:
+    return CORES_REGIONAIS.get(nome_regional, "gray")
+
+
+def legenda_mapa_html(regionais: list[str]) -> str:
+    itens = "".join(
+        [
+            f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {escape(regional)}<br>'
+            for regional in regionais
+        ]
+    )
+    return f'''
+    <div style="position: fixed;
+                top: 50px; left: 50px; width: 220px;
+                background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
+                padding: 10px">
+    <b>Legenda - Regional</b><br>
+    {itens}
+    </div>
+    '''
+
+seed_regionais()
 
 app = FastAPI()
 
@@ -52,6 +103,10 @@ def home():
                     <h2>Mapa de Eventos</h2>
                     <p>Visualize a localização de cada evento no mapa de Belo Horizonte com cores por região.</p>
                 </a>
+                <a class="card" href="/mapa-locais">
+                    <h2>Mapa de Locais</h2>
+                    <p>Veja no mapa todos os locais de evento cadastrados, organizados por região.</p>
+                </a>
                 <a class="card" href="/calendario">
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
@@ -84,6 +139,7 @@ def render_tela_cadastro_manutencao(
     db: Session = SessionLocal()
     try:
         locais_todos = db.query(Local).order_by(Local.nome).all()
+        regionais = db.query(Regional).order_by(Regional.nome).all()
 
         is_cadastro = modo == "cadastro"
 
@@ -188,7 +244,9 @@ def render_tela_cadastro_manutencao(
                         <input name="endereco" value="{local_endereco}" required />
 
                         <label>Região</label>
-                        <input name="regiao" value="{local_regiao}" required />
+                        <select name="regiao" required>
+                            {"".join([f'<option value="{r.nome}" {"selected" if r.nome == local_regiao else ""}>{r.nome}</option>' for r in regionais])}
+                        </select>
 
                         <label>Latitude</label>
                         <input type="number" step="any" name="latitude" value="{local.latitude}" required />
@@ -357,10 +415,7 @@ def render_tela_cadastro_manutencao(
 
                             <label>Região</label>
                             <select name="regiao" required>
-                                <option value="Centro">Centro</option>
-                                <option value="Oeste">Oeste</option>
-                                <option value="Pampulha">Pampulha</option>
-                                <option value="Outra">Outra</option>
+                                {"".join([f'<option value="{r.nome}">{r.nome}</option>' for r in regionais])}
                             </select>
 
                             <label>Latitude</label>
@@ -429,7 +484,8 @@ def render_tela_cadastro_manutencao(
                 .container {{ max-width: 1100px; margin: 0 auto; }}
                 h1 {{ color: #1f2937; margin-bottom: 8px; }}
                 .subtitle {{ color: #4b5563; margin-top: 0; margin-bottom: 24px; }}
-                .top-nav {{ display: flex; gap: 8px; margin-bottom: 16px; }}
+                .top-bar {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }}
+                .top-nav {{ display: flex; gap: 8px; }}
                 .nav-link {{ text-decoration: none; background: #e5e7eb; color: #1f2937; padding: 8px 12px; border-radius: 8px; font-weight: 700; }}
                 .nav-link.active {{ background: #0f766e; color: white; }}
                 .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
@@ -456,7 +512,7 @@ def render_tela_cadastro_manutencao(
                 .modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9998; padding: 24px; overflow: auto; }}
                 .modal-card {{ max-width: 560px; margin: 40px auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 14px 40px rgba(0,0,0,0.25); }}
                 .modal-actions {{ display: flex; gap: 8px; justify-content: flex-end; }}
-                .back {{ display: inline-block; margin-top: 20px; color: #2563eb; text-decoration: none; }}
+                .back {{ display: inline-block; color: #2563eb; text-decoration: none; font-weight: 600; }}
                 .msg {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }}
                 .ok {{ background: #dcfce7; color: #166534; }}
                 .erro {{ background: #fee2e2; color: #991b1b; }}
@@ -470,15 +526,16 @@ def render_tela_cadastro_manutencao(
             <div class="container">
                 <h1>{titulo_pagina}</h1>
                 <p class="subtitle">{subtitulo}</p>
-                <div class="top-nav">
-                    <a class="{nav_cadastro_class}" href="/cadastro">Tela de Cadastro</a>
-                    <a class="{nav_manutencao_class}" href="/manutencao">Tela de Manutenção</a>
+                <div class="top-bar">
+                    <div class="top-nav">
+                        <a class="{nav_cadastro_class}" href="/cadastro">Tela de Cadastro</a>
+                        <a class="{nav_manutencao_class}" href="/manutencao">Tela de Manutenção</a>
+                    </div>
+                    <a class="back" href="/">Voltar para a página inicial</a>
                 </div>
                 {msg_html}
                 {secoes_cadastro_html}
                 {secoes_manutencao_html}
-
-                <a class="back" href="/">Voltar para a página inicial</a>
             </div>
             <script>
                 function openModal(id) {{
@@ -692,6 +749,37 @@ def excluir_evento(evento_id: int):
         db.close()
 
 
+@app.get("/mapa-locais", response_class=HTMLResponse)
+def mapa_locais():
+    db: Session = SessionLocal()
+    try:
+        locais = db.query(Local).all()
+        regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
+
+        mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+
+        for local in locais:
+            cor = cor_regional(local.regiao)
+            tooltip_text = f"{local.nome} — {local.regiao}"
+            popup_text = f"""
+            <b>{local.nome}</b><br>
+            Endereço: {local.endereco}<br>
+            Região: {local.regiao}<br>
+            Lat: {local.latitude}, Lon: {local.longitude}
+            """
+            folium.Marker(
+                location=[local.latitude, local.longitude],
+                popup=popup_text,
+                tooltip=tooltip_text,
+                icon=folium.Icon(color=cor)
+            ).add_to(mapa)
+
+        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        return mapa._repr_html_()
+    finally:
+        db.close()
+
+
 @app.get("/eventos")
 def listar_eventos():
     db: Session = SessionLocal()
@@ -709,51 +797,35 @@ def eventos_por_porte(porte: str):
 @app.get("/mapa", response_class=HTMLResponse)
 def mapa_eventos():
     db: Session = SessionLocal()
-    eventos = db.query(Evento).join(Local).all()
+    try:
+        eventos = db.query(Evento).join(Local).all()
+        regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
-    # Centro do mapa em Belo Horizonte
-    mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        # Centro do mapa em Belo Horizonte
+        mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
 
-    # Cores por região
-    cores = {
-        "Oeste": "blue",
-        "Pampulha": "green",
-        "Centro": "orange"
-    }
+        for evento in eventos:
+            cor = cor_regional(evento.local.regiao)
+            tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
+            popup_text = f"""
+            <b>{evento.nome}</b><br>
+            Descrição: {evento.descricao}<br>
+            Data: {evento.data_inicio} a {evento.data_fim}<br>
+            Público: {evento.publico_estimado}<br>
+            Porte: {evento.porte}<br>
+            Local: {evento.local.nome}
+            """
+            folium.Marker(
+                location=[evento.local.latitude, evento.local.longitude],
+                popup=popup_text,
+                tooltip=tooltip_text,
+                icon=folium.Icon(color=cor)
+            ).add_to(mapa)
 
-    for evento in eventos:
-        cor = cores.get(evento.local.regiao, "gray")
-        tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
-        popup_text = f"""
-        <b>{evento.nome}</b><br>
-        Descrição: {evento.descricao}<br>
-        Data: {evento.data_inicio} a {evento.data_fim}<br>
-        Público: {evento.publico_estimado}<br>
-        Porte: {evento.porte}<br>
-        Local: {evento.local.nome}
-        """
-        folium.Marker(
-            location=[evento.local.latitude, evento.local.longitude],
-            popup=popup_text,
-            tooltip=tooltip_text,
-            icon=folium.Icon(color=cor)
-        ).add_to(mapa)
-
-    # Adicionar legenda
-    legenda_html = '''
-    <div style="position: fixed; 
-                top: 50px; left: 50px; width: 200px; 
-                background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
-                padding: 10px">
-    <b>Legenda - Região</b><br>
-    <i style="background: blue; width: 10px; height: 10px; display: inline-block;"></i> Oeste<br>
-    <i style="background: green; width: 10px; height: 10px; display: inline-block;"></i> Pampulha<br>
-    <i style="background: orange; width: 10px; height: 10px; display: inline-block;"></i> Centro<br>
-    </div>
-    '''
-    mapa.get_root().html.add_child(folium.Element(legenda_html))
-
-    return mapa._repr_html_()
+        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        return mapa._repr_html_()
+    finally:
+        db.close()
 
 
 @app.get("/calendario", response_class=HTMLResponse)
@@ -761,6 +833,7 @@ def calendario_eventos():
     db: Session = SessionLocal()
     locais = db.query(Local).all()
     eventos = db.query(Evento).join(Local).all()
+    regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
     # Encontrar todos os meses com eventos
     meses = set()
@@ -785,11 +858,13 @@ def calendario_eventos():
             dias_com_eventos[(local_nome, evento.data_inicio.year, evento.data_inicio.month, dia)] = True
 
     # Cores por região
-    cores = {
-        "Oeste": "blue",
-        "Pampulha": "green",
-        "Centro": "orange"
-    }
+    cores = {regional: cor_regional(regional) for regional in regionais}
+    legendas_html = "".join(
+        [
+            f'<div class="regiao-box" style="background-color: {cor_regional(regional)};">Regional {escape(regional)}</div>'
+            for regional in regionais
+        ]
+    )
 
     html = """
     <html>
@@ -814,14 +889,13 @@ def calendario_eventos():
             <h1>Calendário de Eventos de Belo Horizonte</h1>
         </div>
         <div class="legenda">
-            <div class="regiao-box" style="background-color: blue;">Regional Oeste</div>
-            <div class="regiao-box" style="background-color: green;">Regional Pampulha</div>
-            <div class="regiao-box" style="background-color: orange;">Regional Centro</div>
+            {legendas_html}
         </div>
         <table>
             <tr>
                 <th>Local</th>
     """
+    html = html.replace("{legendas_html}", legendas_html)
 
     # Cabeçalhos dos meses
     for ano_mes, mes in meses_ordenados:
