@@ -1,19 +1,44 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional
 import folium
+from folium.plugins import MarkerCluster
 import calendar
 from datetime import datetime
 from html import escape
 from typing import Optional
+import math
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
 Base.metadata.create_all(bind=engine)
+
+
+def garantir_colunas_locais():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(locais)"))
+        }
+        if "acessibilidade" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN acessibilidade INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        if "proximo_metro" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN proximo_metro INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+
+garantir_colunas_locais()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -47,7 +72,18 @@ def cor_regional(nome_regional: str) -> str:
     return CORES_REGIONAIS.get(nome_regional, "gray")
 
 
-def legenda_mapa_html(regionais: list[str]) -> str:
+def coordenadas_validas(latitude, longitude) -> bool:
+    try:
+        lat = float(latitude)
+        lon = float(longitude)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(lat) or math.isnan(lon):
+        return False
+    return -90 <= lat <= 90 and -180 <= lon <= 180
+
+
+def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional") -> str:
     itens = "".join(
         [
             f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {escape(regional)}<br>'
@@ -56,10 +92,10 @@ def legenda_mapa_html(regionais: list[str]) -> str:
     )
     return f'''
     <div style="position: fixed;
-                top: 50px; left: 50px; width: 220px;
+                top: 50px; left: 50px; width: 290px;
                 background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
                 padding: 10px">
-    <b>Legenda - Regional</b><br>
+    <b>{escape(cabecalho)}</b><br>
     {itens}
     </div>
     '''
@@ -223,6 +259,8 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
+            local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
             locais_existentes_html += f"""
             <div class="item-row">
                 <div class="item-name">{local_nome}</div>
@@ -253,6 +291,17 @@ def render_tela_cadastro_manutencao(
 
                         <label>Longitude</label>
                         <input type="number" step="any" name="longitude" value="{local.longitude}" required />
+
+                        <div class="check-row">
+                            <label class="check-label">
+                                <input type="checkbox" name="acessibilidade" value="1" {local_acessibilidade_checked} />
+                                Possui acessibilidade
+                            </label>
+                            <label class="check-label">
+                                <input type="checkbox" name="proximo_metro" value="1" {local_proximo_metro_checked} />
+                                Próximo do metrô
+                            </label>
+                        </div>
 
                         <div class="modal-actions">
                             <button type="submit">Salvar</button>
@@ -424,6 +473,17 @@ def render_tela_cadastro_manutencao(
                             <label>Longitude</label>
                             <input type="number" step="any" name="longitude" required />
 
+                            <div class="check-row">
+                                <label class="check-label">
+                                    <input type="checkbox" name="acessibilidade" value="1" />
+                                    Possui acessibilidade
+                                </label>
+                                <label class="check-label">
+                                    <input type="checkbox" name="proximo_metro" value="1" />
+                                    Próximo do metrô
+                                </label>
+                            </div>
+
                             <button type="submit">Salvar local</button>
                         </form>
                     </div>
@@ -499,10 +559,13 @@ def render_tela_cadastro_manutencao(
                 .item-actions form {{ margin: 0; }}
                 label {{ display: block; font-weight: 600; margin-bottom: 6px; color: #111827; }}
                 input, select, textarea {{ width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 14px; box-sizing: border-box; }}
+                input[type="checkbox"] {{ width: auto; margin: 0; }}
                 textarea {{ min-height: 90px; resize: vertical; }}
                 button {{ background: #0f766e; color: white; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 700; }}
                 button:hover {{ background: #115e59; }}
                 .actions {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+                .check-row {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }}
+                .check-label {{ display: flex; align-items: center; gap: 8px; margin-bottom: 0; font-weight: 600; }}
                 .btn-secondary {{ background: #374151; }}
                 .btn-secondary:hover {{ background: #1f2937; }}
                 .btn-danger {{ background: #b91c1c; }}
@@ -591,6 +654,8 @@ def cadastrar_local(
     regiao: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    acessibilidade: Optional[str] = Form(None),
+    proximo_metro: Optional[str] = Form(None),
 ):
     db: Session = SessionLocal()
     try:
@@ -600,6 +665,8 @@ def cadastrar_local(
             regiao=regiao,
             latitude=latitude,
             longitude=longitude,
+            acessibilidade=bool(acessibilidade),
+            proximo_metro=bool(proximo_metro),
         )
         db.add(local)
         db.commit()
@@ -657,6 +724,8 @@ def editar_local(
     regiao: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    acessibilidade: Optional[str] = Form(None),
+    proximo_metro: Optional[str] = Form(None),
 ):
     db: Session = SessionLocal()
     try:
@@ -669,6 +738,8 @@ def editar_local(
         local.regiao = regiao
         local.latitude = latitude
         local.longitude = longitude
+        local.acessibilidade = bool(acessibilidade)
+        local.proximo_metro = bool(proximo_metro)
         db.commit()
         return RedirectResponse(url="/manutencao?msg=local_edit_ok", status_code=303)
     finally:
@@ -759,6 +830,8 @@ def mapa_locais():
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
 
         for local in locais:
+            if not coordenadas_validas(local.latitude, local.longitude):
+                continue
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
@@ -774,7 +847,10 @@ def mapa_locais():
                 icon=folium.Icon(color=cor)
             ).add_to(mapa)
 
-        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        cabecalho_legenda = f"Legenda - Regional ({len(locais)} locais)"
+        mapa.get_root().html.add_child(
+            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+        )
         return mapa._repr_html_()
     finally:
         db.close()
@@ -803,8 +879,12 @@ def mapa_eventos():
 
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
 
+        eventos_mostrados = 0
         for evento in eventos:
+            if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
+                continue
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
@@ -820,9 +900,13 @@ def mapa_eventos():
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
-            ).add_to(mapa)
+            ).add_to(cluster_eventos)
+            eventos_mostrados += 1
 
-        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
+        mapa.get_root().html.add_child(
+            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+        )
         return mapa._repr_html_()
     finally:
         db.close()
@@ -877,6 +961,8 @@ def calendario_eventos():
             .header h1 { margin: 0; }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
+            .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+            .infra-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-size: 12px; }
             table { border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; font-size: 16px; }
@@ -906,7 +992,18 @@ def calendario_eventos():
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
-        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small></td>"
+        acessibilidade_html = ""
+        proximo_metro_html = ""
+        if bool(local.acessibilidade):
+            acessibilidade_html = '<span class="infra-tag" title="Acessibilidade disponível">♿ Acessível</span>'
+        if bool(local.proximo_metro):
+            proximo_metro_html = '<span class="infra-tag" title="Próximo ao metrô">🚇 Metrô próximo</span>'
+
+        infra_local_html = ""
+        if acessibilidade_html or proximo_metro_html:
+            infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}</div>'
+
+        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{infra_local_html}</td>"
         
         for ano_mes, mes in meses_ordenados:
             # Obter todos os eventos deste mês para este local

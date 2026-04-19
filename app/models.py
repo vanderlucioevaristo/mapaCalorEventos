@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -19,6 +19,8 @@ class Local(Base):
     regiao = Column(String)
     latitude = Column(Float)
     longitude = Column(Float)
+    acessibilidade = Column(Boolean, default=False, nullable=False)
+    proximo_metro = Column(Boolean, default=False, nullable=False)
 
     eventos = relationship("Evento", back_populates="local")
 
