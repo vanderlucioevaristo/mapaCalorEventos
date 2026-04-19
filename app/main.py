@@ -9,6 +9,7 @@ import calendar
 from datetime import datetime
 from html import escape
 from typing import Optional
+import math
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -68,6 +69,17 @@ def seed_regionais():
 
 def cor_regional(nome_regional: str) -> str:
     return CORES_REGIONAIS.get(nome_regional, "gray")
+
+
+def coordenadas_validas(latitude, longitude) -> bool:
+    try:
+        lat = float(latitude)
+        lon = float(longitude)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(lat) or math.isnan(lon):
+        return False
+    return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
 def legenda_mapa_html(regionais: list[str]) -> str:
@@ -817,6 +829,8 @@ def mapa_locais():
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
 
         for local in locais:
+            if not coordenadas_validas(local.latitude, local.longitude):
+                continue
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
@@ -863,6 +877,8 @@ def mapa_eventos():
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
 
         for evento in eventos:
+            if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
+                continue
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
