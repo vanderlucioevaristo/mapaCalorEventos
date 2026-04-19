@@ -11,6 +11,7 @@ from datetime import datetime
 from html import escape
 from typing import Optional
 import math
+import json
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -100,6 +101,77 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
     </div>
     '''
 
+
+def legenda_mapa_html_interativa(
+    regionais: list[str],
+    cabecalho: str,
+    map_name: str,
+    bounds_por_regional: dict[str, dict[str, float]],
+) -> str:
+    map_name_json = json.dumps(map_name)
+    itens = []
+    for regional in regionais:
+        estilo_ponto = (
+            f'background: {cor_regional(regional)}; width: 10px; height: 10px; '
+            'display: inline-block; margin-right: 6px;'
+        )
+        if regional in bounds_por_regional:
+            itens.append(
+                f'<button type="button" class="legend-link" '
+                f'onclick="zoomParaRegional_{map_name}({json.dumps(regional)})">'
+                f'<i style="{estilo_ponto}"></i>{escape(regional)}</button>'
+            )
+        else:
+            itens.append(
+                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{escape(regional)}</span>'
+            )
+
+    bounds_json = json.dumps(bounds_por_regional)
+    itens_html = "".join(item + "<br>" for item in itens)
+
+    return f'''
+    <div style="position: fixed;
+                top: 50px; left: 50px; width: 290px;
+                background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
+                padding: 10px">
+    <b>{escape(cabecalho)}</b><br>
+    <small>Clique na regional para aproximar</small><br><br>
+    {itens_html}
+    </div>
+    <style>
+        .legend-link {{
+            border: none;
+            background: transparent;
+            padding: 2px 0;
+            cursor: pointer;
+            color: #1d4ed8;
+            text-align: left;
+            font-size: 14px;
+        }}
+        .legend-link:hover {{ text-decoration: underline; }}
+        .legend-disabled {{ color: #6b7280; }}
+    </style>
+    <script>
+        const boundsRegionais_{map_name} = {bounds_json};
+        function zoomParaRegional_{map_name}(regional) {{
+            const bounds = boundsRegionais_{map_name}[regional];
+            if (!bounds) return;
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+            const unicoPonto =
+                bounds.min_lat === bounds.max_lat && bounds.min_lon === bounds.max_lon;
+            if (unicoPonto) {{
+                mapa.setView([bounds.min_lat, bounds.min_lon], 15);
+                return;
+            }}
+            mapa.fitBounds([
+                [bounds.min_lat, bounds.min_lon],
+                [bounds.max_lat, bounds.max_lon]
+            ]);
+        }}
+    </script>
+    '''
+
 seed_regionais()
 
 app = FastAPI()
@@ -132,7 +204,7 @@ def home():
     </head>
     <body>
         <div class="page">
-            <h1>MapaCalorEventos BH</h1>
+            <h1>Eventos BH</h1>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             <div class="menu">
                 <a class="card" href="/mapa">
@@ -880,11 +952,30 @@ def mapa_eventos():
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
+        bounds_por_regional: dict[str, dict[str, float]] = {}
 
         eventos_mostrados = 0
         for evento in eventos:
             if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
                 continue
+            lat = float(evento.local.latitude)
+            lon = float(evento.local.longitude)
+            regional = evento.local.regiao or "Sem regional"
+
+            limites = bounds_por_regional.get(regional)
+            if not limites:
+                bounds_por_regional[regional] = {
+                    "min_lat": lat,
+                    "max_lat": lat,
+                    "min_lon": lon,
+                    "max_lon": lon,
+                }
+            else:
+                limites["min_lat"] = min(limites["min_lat"], lat)
+                limites["max_lat"] = max(limites["max_lat"], lat)
+                limites["min_lon"] = min(limites["min_lon"], lon)
+                limites["max_lon"] = max(limites["max_lon"], lon)
+
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
@@ -905,7 +996,14 @@ def mapa_eventos():
 
         cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
         mapa.get_root().html.add_child(
-            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+            folium.Element(
+                legenda_mapa_html_interativa(
+                    regionais=regionais,
+                    cabecalho=cabecalho_legenda,
+                    map_name=mapa.get_name(),
+                    bounds_por_regional=bounds_por_regional,
+                )
+            )
         )
         return mapa._repr_html_()
     finally:
@@ -956,9 +1054,9 @@ def calendario_eventos():
         <title>Calendário de Eventos BH</title>
         <style>
             body { font-family: Arial, sans-serif; }
-            .header { display: flex; align-items: center; gap: 20px; margin: 20px; }
+            .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
-            .header h1 { margin: 0; }
+            .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
