@@ -82,7 +82,7 @@ def coordenadas_validas(latitude, longitude) -> bool:
     return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
-def legenda_mapa_html(regionais: list[str]) -> str:
+def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional") -> str:
     itens = "".join(
         [
             f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {escape(regional)}<br>'
@@ -91,10 +91,10 @@ def legenda_mapa_html(regionais: list[str]) -> str:
     )
     return f'''
     <div style="position: fixed;
-                top: 50px; left: 50px; width: 220px;
+                top: 50px; left: 50px; width: 290px;
                 background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
                 padding: 10px">
-    <b>Legenda - Regional</b><br>
+    <b>{escape(cabecalho)}</b><br>
     {itens}
     </div>
     '''
@@ -846,7 +846,10 @@ def mapa_locais():
                 icon=folium.Icon(color=cor)
             ).add_to(mapa)
 
-        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        cabecalho_legenda = f"Legenda - Regional ({len(locais)} locais)"
+        mapa.get_root().html.add_child(
+            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+        )
         return mapa._repr_html_()
     finally:
         db.close()
@@ -876,6 +879,7 @@ def mapa_eventos():
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
 
+        eventos_mostrados = 0
         for evento in eventos:
             if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
                 continue
@@ -895,8 +899,12 @@ def mapa_eventos():
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
             ).add_to(mapa)
+            eventos_mostrados += 1
 
-        mapa.get_root().html.add_child(folium.Element(legenda_mapa_html(regionais)))
+        cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
+        mapa.get_root().html.add_child(
+            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+        )
         return mapa._repr_html_()
     finally:
         db.close()
