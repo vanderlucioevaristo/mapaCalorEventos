@@ -5,6 +5,7 @@ from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional
 import folium
+from folium.plugins import MarkerCluster
 import calendar
 from datetime import datetime
 from html import escape
@@ -878,6 +879,7 @@ def mapa_eventos():
 
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
 
         eventos_mostrados = 0
         for evento in eventos:
@@ -898,7 +900,7 @@ def mapa_eventos():
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
-            ).add_to(mapa)
+            ).add_to(cluster_eventos)
             eventos_mostrados += 1
 
         cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
