@@ -1,0 +1,52 @@
+LOCAL;ENDERECO;REGIAO;LATITUDE;LONGITUDE;EVENTO;DESCRICAO;DATA_INICIO;DATA_FIM;PUBLICO_ESTIMADO;PORTE_EVENTO
+Arena MRV;Rua Cristina Maria de Assis, 202 - Califórnia, Belo Horizonte - MG, CEP 30840-700;Noroeste;-19.9302;-44.0142;The Send Brasil;The Send Brasil;31/01/2026;31/01/2026;0;Grande
+Parque das Mangabeiras;Avenida José do Patrocínio Pontes, 580 - Bairro Mangabeiras, Belo Horizonte - MG CEP 30.210-090;Sul;-19.94696;-43.899413;Festival da Flor (Nando Reis);Festival da Flor (Nando Reis);31/01/2026;31/01/2026;0;Grande
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Ensaios de Anitta;Ensaios de Anitta;07/02/2026;07/02/2026;0;Grande
+Parque Ecológico da Pampulha;Avenida José do Patrocínio Pontes, 580 - Bairro Mangabeiras, Belo Horizonte - MG CEP 30.210-090;Pampulha;-19.852804;-43.994255;Dominguinho;Dominguinho;07/02/2026;07/02/2026;0;Grande
+Mineirinho;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.862;-43.9725;Carnaval dos Sonhos;Carnaval dos Sonhos;13/02/2026;17/02/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Graça Brasil;Graça Brasil;14/02/2026;14/02/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Movemente;Movemente;26/02/2026;28/02/2026;0;Grande
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Elvis Experience ;Elvis Experience ;28/02/2026;28/02/2026;0;Grande
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Confeitar Minas;Confeitar Minas;03/03/2026;05/03/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;CIDCON;CIDCON;05/03/2026;07/03/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Mystic Fair;Mystic Fair;07/03/2026;08/03/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Jason Mraz;Jason Mraz;08/03/2026;08/03/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Cláudia Leite;Cláudia Leite;14/03/2026;14/03/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Farmatrend;Farmatrend;18/03/2026;19/03/2026;0;Grande
+Centerminas Expo;Avenida. Pastor Anselmo Silvestre, 1495, 4º andar Bairro União, Belo Horizonte - MG, CEP 31170-678;Nordeste;-19.8837;-43.9216;ENAF ;ENAF ;19/03/2026;22/03/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Baile da Arena ;Baile da Arena ;21/03/2026;21/03/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Abramult COMICS;Abramult COMICS;08/04/2026;09/04/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Proteminas ;Proteminas ;14/04/2026;16/04/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Guilherme Arantes;Guilherme Arantes;18/04/2026;18/04/2026;0;Grande
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Supertramp Experience;Supertramp Experience;24/04/2026;24/04/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;SUAS 360;SUAS 360;28/04/2026;29/04/2026;0;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Congresso Brasileiro de Periodontia e Implantodontia;Congresso Brasileiro de Periodontia e Implantodontia;29/04/2026;02/05/2026;0;Médio
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Cristo é Show 2026;Cristo é Show 2026;03/05/2026;03/05/2026;0;Grande
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Festival Sarará;Festival Sarará;23/05/2026;23/05/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;YES Móvel Show ;YES Móvel Show ;26/05/2026;28/05/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Congresso Brasileiro de Ginecologia e Obstetrícia;Congresso Brasileiro de Ginecologia e Obstetrícia;27/05/2026;30/05/2026;0;Médio
+The One;Av. Raja Gabáglia, 1143 - Luxemburgo, Belo Horizonte - MG, 30380-403;Oeste;-19.946399;-43.957252;Congresso Brasileiro de Assimetrias Cranianas;Congresso Brasileiro de Assimetrias Cranianas;28/05/2026;30/05/2026;0;Médio
+Minas Tenis Clube I;Rua da Bahia, 2244 - Lourdes, Belo Horizonte - MG, CEP 30160-012;Centro-Sul;-19.932971;-43.944365;Congresso Luso-Brasileiro de Auditores Fiscais;Congresso Luso-Brasileiro de Auditores Fiscais;31/05/2026;03/06/2026;0;Médio
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Alceu Valença;Alceu Valença;13/06/2026;13/06/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Minas Summit ;Minas Summit ;17/06/2026;28/06;0;Médio
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;1ª Maratona Internacional de BH;1ª Maratona Internacional de BH;28/06/2026;28/06/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Professional Fair;Professional Fair;05/07/2026;07/07/2026;0;Pequeno
+Centerminas ;Rua Cristina Maria de Assis, 202 - Califórnia, Belo Horizonte - MG, CEP 30840-700;#N/A;#N/A;#N/A;Expocachaça;Expocachaça;06/08/2026;08/08/2026;0;Médio
+Parque Ecológico da Pampulha;Avenida José do Patrocínio Pontes, 580 - Bairro Mangabeiras, Belo Horizonte - MG CEP 30.210-090;Pampulha;-19.852804;-43.994255;Festival Sensacional;Festival Sensacional;07/08/2026;08/08/2026;0;Grande
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Expo Hospital ;Expo Hospital ;11/08/2026;13/08/2026;0;Pequeno
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Travel Next;Travel Next;08/12/2026;13/08/2026;0;Pequeno
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Ritchie;Ritchie;15/08/2026;15/08/2026;0;Pequeno
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Exposibram ;Exposibram ;24/08/2026;27/08/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;ExpoEcomm BH;ExpoEcomm BH;25/08/2026;25/08/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Congresso Brasileiro de Nefrologia;Congresso Brasileiro de Nefrologia;16/09/2026;19/09/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Congresso Brasileiro do Algodão;Congresso Brasileiro do Algodão;22/09/2026;24/09/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Minasparts (Autopeças);Minasparts (Autopeças);30/09/2026;03/10/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Congresso Brasileiro de Cirurgia Bariátrica e Metabólica;Congresso Brasileiro de Cirurgia Bariátrica e Metabólica;30/09/2026;02/10/2026;0;Médio
+UFMG;Avenida Presidente Antônio Carlos, nº 6627, Bairro Pampulha, Belo Horizonte - MG, CEP: 31.270-901;Pampulha;-19.8687796;-43.9634907;Congresso Academina Brasileira de Neuropsicologia;Congresso Academina Brasileira de Neuropsicologia;08/10/2026;10/10/2026;0;Médio
+Minascentro;Av. Augusto de Lima, 785 - Centro;Centro;-19.9191;-43.9406;Congresso Brasileiro de Pediatria ;Congresso Brasileiro de Pediatria ;13/10/2026;17/10/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Superminas;Superminas;27/10/2026;29/10/2026;0;Médio
+Expominas;Av. Amazonas, 6200 - Gameleira;Oeste;-19.9227;-43.969;Feira Nacional de Artesanato;Feira Nacional de Artesanato;02/12/2026;06/12/2026;0;Médio
+Mineirão;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.8659;-43.9711;Volta Internacional da Pampulha;Volta Internacional da Pampulha;06/12/2026;06/12/2026;0;Grande
+Arena MRV;Rua Cristina Maria de Assis, 202 - Califórnia, Belo Horizonte - MG, CEP 30840-700;Noroeste;-19.9302;-44.0142;Último Vôo da Nave - Xuxa;Último Vôo da Nave - Xuxa;14/11/2026;14/11/2026;0;Grande
+Arena MRV;Rua Cristina Maria de Assis, 202 - Califórnia, Belo Horizonte - MG, CEP 30840-700;Noroeste;-19.9302;-44.0142;"Kid Abelha - ""Turnê Eu Tive Um Sonho""";"Kid Abelha - Turnê ""Eu Tive Um Sonho""";04/07/2026;04/07/2026;0;Grande
+Mineirinho;Av. Antônio Abrahão Caram, 1001 - São José;Pampulha;-19.862;-43.9725;Churrasquinho Menos é Mais BH;Churrasquinho Menos é Mais BH;15/08/2026;15/08/2026;0;Grande
