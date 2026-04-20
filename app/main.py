@@ -18,8 +18,6 @@ import json
 import os
 from pathlib import Path
 
-
-
 #para executar 
 # cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
 # python3 mapaCalorEventos/app/main.py
