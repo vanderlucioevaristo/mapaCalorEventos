@@ -19,6 +19,7 @@ class Local(Base):
     regiao = Column(String)
     latitude = Column(Float)
     longitude = Column(Float)
+    tipo_evento = Column(String, default="Negócios", nullable=False)
     acessibilidade = Column(Boolean, default=False, nullable=False)
     proximo_metro = Column(Boolean, default=False, nullable=False)
     restaurantes = Column(Boolean, default=True, nullable=False)
@@ -36,6 +37,7 @@ class Evento(Base):
     data_fim = Column(Date)
     publico_estimado = Column(Integer)
     porte = Column(String)
+    tipo_evento = Column(String, default="Negócios", nullable=False)
     local_id = Column(Integer, ForeignKey("locais.id"))
 
     local = relationship("Local", back_populates="eventos")

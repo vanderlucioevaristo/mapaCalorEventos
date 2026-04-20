@@ -1,9 +1,12 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from dotenv import load_dotenv
+from starlette.middleware.sessions import SessionMiddleware
 import folium
 from folium.plugins import MarkerCluster
 import calendar
@@ -12,12 +15,25 @@ from html import escape
 from typing import Optional
 import math
 import json
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
 Base.metadata.create_all(bind=engine)
+
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo"]
+
+
+def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
+    if tipo_evento in TIPOS_EVENTO:
+        return tipo_evento
+    return "Negócios"
 
 
 def garantir_colunas_locais():
@@ -43,9 +59,39 @@ def garantir_colunas_locais():
                     "ALTER TABLE locais ADD COLUMN restaurantes INTEGER NOT NULL DEFAULT 1"
                 )
             )
+        if "tipo_evento" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE locais SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
+            )
+        )
+
+
+def garantir_colunas_eventos():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(eventos)"))
+        }
+        if "tipo_evento" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE eventos ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE eventos SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
+            )
+        )
 
 
 garantir_colunas_locais()
+garantir_colunas_eventos()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -111,25 +157,72 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
 def recursos_rota_mapa_html(map_name: str) -> str:
     map_name_json = json.dumps(map_name)
     return f'''
+    <style>
+        .leaflet-control-clear-route button {{
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }}
+        .leaflet-control-clear-route button:hover {{
+            background: #991b1b;
+        }}
+    </style>
     <script>
         window.routeLayer_{map_name} = null;
         window.routeOriginMarker_{map_name} = null;
         window.routeDestinationMarker_{map_name} = null;
         window.selectedOrigin_{map_name} = null;
 
-        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+        function limparRotaMapa_{map_name}() {{
             const mapa = window[{map_name_json}];
             if (!mapa) return;
 
             if (window.routeLayer_{map_name}) {{
                 mapa.removeLayer(window.routeLayer_{map_name});
+                window.routeLayer_{map_name} = null;
             }}
             if (window.routeOriginMarker_{map_name}) {{
                 mapa.removeLayer(window.routeOriginMarker_{map_name});
+                window.routeOriginMarker_{map_name} = null;
             }}
             if (window.routeDestinationMarker_{map_name}) {{
                 mapa.removeLayer(window.routeDestinationMarker_{map_name});
+                window.routeDestinationMarker_{map_name} = null;
             }}
+        }}
+
+        function adicionarControleLimparRota_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.clearRouteControl_{map_name}) return;
+
+            const ClearControl = L.Control.extend({{
+                options: {{ position: 'topright' }},
+                onAdd: function() {{
+                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-clear-route');
+                    const button = L.DomUtil.create('button', '', container);
+                    button.type = 'button';
+                    button.innerText = 'Limpar rota';
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.on(button, 'click', function() {{
+                        limparRotaMapa_{map_name}();
+                    }});
+                    return container;
+                }}
+            }});
+
+            window.clearRouteControl_{map_name} = new ClearControl();
+            mapa.addControl(window.clearRouteControl_{map_name});
+        }}
+
+        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+            limparRotaMapa_{map_name}();
 
             window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
                 .addTo(mapa)
@@ -216,6 +309,8 @@ def recursos_rota_mapa_html(map_name: str) -> str:
                 {{ enableHighAccuracy: true, timeout: 10000 }}
             );
         }}
+
+        setTimeout(adicionarControleLimparRota_{map_name}, 0);
     </script>
     '''
 
@@ -309,6 +404,245 @@ def legenda_mapa_html_interativa(
 seed_regionais()
 
 app = FastAPI()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "troque-esta-chave-em-producao"),
+)
+
+oauth = OAuth()
+
+if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"):
+    oauth.register(
+        name="google",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
+if os.getenv("FACEBOOK_CLIENT_ID") and os.getenv("FACEBOOK_CLIENT_SECRET"):
+    oauth.register(
+        name="facebook",
+        client_id=os.getenv("FACEBOOK_CLIENT_ID"),
+        client_secret=os.getenv("FACEBOOK_CLIENT_SECRET"),
+        access_token_url="https://graph.facebook.com/v19.0/oauth/access_token",
+        authorize_url="https://www.facebook.com/v19.0/dialog/oauth",
+        api_base_url="https://graph.facebook.com/v19.0/",
+        client_kwargs={"scope": "email,public_profile"},
+    )
+
+if os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_CLIENT_SECRET"):
+    oauth.register(
+        name="apple",
+        client_id=os.getenv("APPLE_CLIENT_ID"),
+        client_secret=os.getenv("APPLE_CLIENT_SECRET"),
+        server_metadata_url="https://appleid.apple.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "name email"},
+    )
+
+
+def _provedores_oauth_disponiveis() -> list[str]:
+    provedores = []
+    for nome in ("google", "facebook", "apple"):
+        if oauth.create_client(nome):
+            provedores.append(nome)
+    return provedores
+
+
+def _oauth_base_url(request: Request) -> str:
+    base = os.getenv("OAUTH_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def _oauth_redirect_uri(request: Request, provider: str) -> str:
+    return f"{_oauth_base_url(request)}/auth/{provider}/callback"
+
+
+USUARIO_MESTRE = {
+    "provider": "sistema",
+    "id": "mestre",
+    "name": "Administrador",
+    "email": "admin@sistema.local",
+    "admin": True,
+}
+
+EMAILS_ADMIN = {
+    "vanderlucio.evaristo@gmail.com",
+    "vanderlucioevaristo@gmail.com",
+}
+
+REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
+
+
+def _usuario_atual(request: Request) -> dict:
+    """Retorna o usuário da sessão ou o mestre quando login não é exigido."""
+    if not REQUIRE_LOGIN:
+        return request.session.get("user") or USUARIO_MESTRE
+    return request.session.get("user") or {}
+
+
+def _eh_admin(user: dict) -> bool:
+    if user.get("admin"):
+        return True
+    email = (user.get("email") or "").lower()
+    return email in {e.lower() for e in EMAILS_ADMIN}
+
+
+def _redirect_se_nao_autenticado(request: Request):
+    user = _usuario_atual(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    # Garante que a sessão reflita o usuário mestre quando login não é exigido
+    if not REQUIRE_LOGIN and not request.session.get("user"):
+        request.session["user"] = USUARIO_MESTRE
+    return None
+
+
+def _redirect_se_nao_admin(request: Request):
+    user = _usuario_atual(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not _eh_admin(user):
+        return RedirectResponse(url="/?acesso=negado", status_code=303)
+    return None
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+
+    auth_error = request.query_params.get("erro")
+    provedores = _provedores_oauth_disponiveis()
+    botoes_html = ""
+    for provedor in provedores:
+        rotulo = provedor.capitalize()
+        cor = {
+            "google": "#1a73e8",
+            "facebook": "#1877f2",
+            "apple": "#111827",
+        }.get(provedor, "#2563eb")
+        botoes_html += (
+            f'<a class="btn" style="background:{cor};" href="/auth/{provedor}/login">'
+            f'Entrar com {rotulo}</a>'
+        )
+
+    erro_html = ""
+    if auth_error:
+        erro_html = (
+            '<div class="warn" style="background:#fee2e2;color:#991b1b;">'
+            f'Falha ao autenticar com {escape(auth_error)}. '
+            'Revise as credenciais e a URL de callback configurada.</div>'
+        )
+
+    if not botoes_html:
+        botoes_html = (
+            '<div class="warn">Nenhum provedor OAuth configurado. '
+            'Defina variáveis GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET '
+            'ou APPLE_CLIENT_ID/SECRET.</div>'
+        )
+
+    google_config_html = ""
+    if "google" not in provedores:
+        google_config_html = (
+            '<div class="setup">'
+            '<strong>Google:</strong> configure no Google Cloud Console o redirect URI '
+            f'<code>{escape(_oauth_redirect_uri(request, "google"))}</code> '
+            'e preencha GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no arquivo .env.'
+            '</div>'
+        )
+
+    return f"""
+    <html>
+    <head>
+        <title>Login - Eventos BH</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
+            .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+            .card {{ width: 100%; max-width: 420px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            h1 {{ margin: 0 0 8px; color: #111827; }}
+            p {{ margin: 0 0 20px; color: #4b5563; }}
+            .btn {{ display: block; color: white; text-decoration: none; font-weight: 700; text-align: center; padding: 11px 14px; border-radius: 8px; margin-bottom: 10px; }}
+            .warn {{ background: #fef3c7; color: #92400e; border-radius: 8px; padding: 12px; font-size: 14px; }}
+            .setup {{ margin-top: 14px; background: #eff6ff; color: #1e3a8a; border-radius: 8px; padding: 12px; font-size: 14px; line-height: 1.5; }}
+            code {{ background: #dbeafe; padding: 2px 6px; border-radius: 6px; }}
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="card">
+                <h1>Entrar no Eventos BH</h1>
+                <p>Use uma conta social para acessar o sistema.</p>
+                {erro_html}
+                {botoes_html}
+                {google_config_html}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.get("/auth/{provider}/login")
+async def oauth_login(provider: str, request: Request):
+    client = oauth.create_client(provider)
+    if not client:
+        return RedirectResponse(url="/login", status_code=303)
+
+    redirect_uri = _oauth_redirect_uri(request, provider)
+    kwargs = {}
+    if provider == "google":
+        kwargs["prompt"] = "select_account"
+    return await client.authorize_redirect(request, redirect_uri, **kwargs)
+
+
+@app.get("/auth/{provider}/callback")
+async def oauth_callback(provider: str, request: Request):
+    client = oauth.create_client(provider)
+    if not client:
+        return RedirectResponse(url="/login", status_code=303)
+
+    try:
+        token = await client.authorize_access_token(request)
+    except OAuthError:
+        return RedirectResponse(url=f"/login?erro={provider}", status_code=303)
+
+    profile = {}
+    if provider == "google":
+        profile = token.get("userinfo") or {}
+        if not profile:
+            try:
+                profile = await client.parse_id_token(request, token)
+            except Exception:
+                profile = {}
+    elif provider == "facebook":
+        response = await client.get("me?fields=id,name,email,picture", token=token)
+        profile = response.json()
+    elif provider == "apple":
+        profile = token.get("userinfo") or {}
+        if not profile:
+            try:
+                profile = await client.parse_id_token(request, token)
+            except Exception:
+                profile = {}
+
+    request.session["user"] = {
+        "provider": provider,
+        "id": profile.get("sub") or profile.get("id") or "",
+        "name": profile.get("name") or profile.get("email") or "Usuário",
+        "email": profile.get("email") or "",
+    }
+    return RedirectResponse(url="/", status_code=303)
 
 #para executar 
 # cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
@@ -318,28 +652,48 @@ app = FastAPI()
 # .venv/bin/python -m mapaCalorEventos.app.seed
 
 @app.get("/", response_class=HTMLResponse)
-def home():
-    return """
+def home(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
+    user = _usuario_atual(request)
+    user_name = escape(user.get("name") or "Usuário")
+    acesso_negado = request.query_params.get("acesso") == "negado"
+    aviso_acesso_html = (
+        '<div style="background:#fee2e2;color:#991b1b;padding:10px 16px;border-radius:8px;margin-bottom:16px;">'
+        'Acesso restrito. Você não tem permissão para acessar essa área.</div>'
+    ) if acesso_negado else ""
+    is_admin = _eh_admin(user)
+    return f"""
     <html>
     <head>
         <title>Eventos BH</title>
         <style>
-            body { font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }
-            .page { max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
-            h1 { margin-top: 0; color: #1f2937; }
-            p { color: #4b5563; font-size: 16px; line-height: 1.6; }
-            .menu { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }
-            .card { flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }
-            .card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }
-            .card h2 { margin: 0 0 10px; font-size: 22px; }
-            .card p { margin: 0; color: #374151; }
-            .footer { margin-top: 32px; font-size: 14px; color: #6b7280; }
+            body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
+            .page {{ max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }}
+            .top {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
+            .logout {{ text-decoration: none; background: #1f2937; color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: 700; }}
+            .user {{ color: #374151; font-size: 14px; margin-right: auto; margin-left: 12px; }}
+            h1 {{ margin-top: 0; color: #1f2937; }}
+            p {{ color: #4b5563; font-size: 16px; line-height: 1.6; }}
+            .menu {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }}
+            .card {{ flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }}
+            .card:hover {{ transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }}
+            .card h2 {{ margin: 0 0 10px; font-size: 22px; }}
+            .card p {{ margin: 0; color: #374151; }}
+            .footer {{ margin-top: 32px; font-size: 14px; color: #6b7280; }}
         </style>
     </head>
     <body>
         <div class="page">
-            <h1>Eventos BH</h1>
+            <div class="top">
+                <h1>Eventos BH</h1>
+                <span class="user">Conectado como: {user_name}</span>
+                <a class="logout" href="/logout">Sair</a>
+            </div>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
+            {aviso_acesso_html}
             <div class="menu">
                 <a class="card" href="/mapa">
                     <h2>Mapa de Eventos</h2>
@@ -353,14 +707,8 @@ def home():
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
-                <a class="card" href="/cadastro">
-                    <h2>Cadastrar Evento/Local</h2>
-                    <p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p>
-                </a>
-                <a class="card" href="/manutencao">
-                    <h2>Manutenção</h2>
-                    <p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p>
-                </a>
+                {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
             <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados.</div>
         </div>
@@ -402,6 +750,7 @@ def render_tela_cadastro_manutencao(
                 (Local.nome.ilike(termo_local))
                 | (Local.endereco.ilike(termo_local))
                 | (Local.regiao.ilike(termo_local))
+                | (Local.tipo_evento.ilike(termo_local))
             )
         total_locais = query_locais.count()
         total_paginas_local = max(1, (total_locais + por_pagina - 1) // por_pagina)
@@ -421,6 +770,7 @@ def render_tela_cadastro_manutencao(
                 (Evento.nome.ilike(termo_evento))
                 | (Evento.descricao.ilike(termo_evento))
                 | (Evento.porte.ilike(termo_evento))
+                | (Evento.tipo_evento.ilike(termo_evento))
                 | (Local.nome.ilike(termo_evento))
             )
         total_eventos = query_eventos.count()
@@ -465,12 +815,13 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_tipo_evento = normalizar_tipo_evento(local.tipo_evento)
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
             local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             locais_existentes_html += f"""
             <div class="item-row">
-                <div class="item-name">{local_nome}</div>
+                <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small></div>
                 <div class="item-actions">
                     <button class="btn-secondary" type="button" onclick="openModal('local-modal-{local.id}')">Editar</button>
                     <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
@@ -491,6 +842,11 @@ def render_tela_cadastro_manutencao(
                         <label>Região</label>
                         <select name="regiao" required>
                             {"".join([f'<option value="{r.nome}" {"selected" if r.nome == local_regiao else ""}>{r.nome}</option>' for r in regionais])}
+                        </select>
+
+                        <label>Tipo de evento</label>
+                        <select name="tipo_evento" required>
+                            {"".join([f'<option value="{tipo}" {"selected" if tipo == local_tipo_evento else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
                         </select>
 
                         <label>Latitude</label>
@@ -528,6 +884,7 @@ def render_tela_cadastro_manutencao(
             evento_nome = escape(evento.nome or "")
             evento_descricao = escape(evento.descricao or "")
             evento_porte = escape(evento.porte or "")
+            evento_tipo_evento = normalizar_tipo_evento(evento.tipo_evento)
             evento_options = "".join(
                 [
                     f'<option value="{local.id}" {"selected" if local.id == evento.local_id else ""}>{local.nome} ({local.regiao})</option>'
@@ -536,7 +893,7 @@ def render_tela_cadastro_manutencao(
             )
             eventos_existentes_html += f"""
             <div class="item-row">
-                <div class="item-name">{evento_nome}</div>
+                <div class="item-name">{evento_nome} <small>({escape(evento_tipo_evento)})</small></div>
                 <div class="item-actions">
                     <button class="btn-secondary" type="button" onclick="openModal('evento-modal-{evento.id}')">Editar</button>
                     <form method="post" action="/cadastro/evento/{evento.id}/excluir" onsubmit="return confirm('Excluir evento?');">
@@ -565,6 +922,11 @@ def render_tela_cadastro_manutencao(
 
                         <label>Porte</label>
                         <input name="porte" value="{evento_porte}" required />
+
+                        <label>Tipo de evento</label>
+                        <select name="tipo_evento" required>
+                            {"".join([f'<option value="{tipo}" {"selected" if tipo == evento_tipo_evento else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
+                        </select>
 
                         <label>Local de execução</label>
                         <select name="local_id" required>
@@ -636,11 +998,11 @@ def render_tela_cadastro_manutencao(
                 <form method="get" action="/manutencao" class="grid">
                     <div>
                         <label>Buscar locais</label>
-                        <input name="busca_local" value="{busca_local}" placeholder="Nome, endereço ou região" />
+                        <input name="busca_local" value="{busca_local}" placeholder="Nome, endereço, região ou tipo" />
                     </div>
                     <div>
                         <label>Buscar eventos</label>
-                        <input name="busca_evento" value="{busca_evento}" placeholder="Nome, descrição, porte ou local" />
+                        <input name="busca_evento" value="{busca_evento}" placeholder="Nome, descrição, porte, tipo ou local" />
                     </div>
                     <div>
                         <button type="submit">Aplicar filtros</button>
@@ -676,6 +1038,11 @@ def render_tela_cadastro_manutencao(
                             <label>Região</label>
                             <select name="regiao" required>
                                 {"".join([f'<option value="{r.nome}">{r.nome}</option>' for r in regionais])}
+                            </select>
+
+                            <label>Tipo de evento</label>
+                            <select name="tipo_evento" required>
+                                {"".join([f'<option value="{tipo}" {"selected" if tipo == "Negócios" else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
                             </select>
 
                             <label>Latitude</label>
@@ -723,6 +1090,11 @@ def render_tela_cadastro_manutencao(
 
                             <label>Porte do evento</label>
                             <input name="porte" placeholder="Pequeno, Médio, Grande..." required />
+
+                            <label>Tipo de evento</label>
+                            <select name="tipo_evento" required>
+                                {"".join([f'<option value="{tipo}" {"selected" if tipo == "Negócios" else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
+                            </select>
 
                             <label>Local de execução</label>
                             <select name="local_id" required>
@@ -840,18 +1212,27 @@ def render_tela_cadastro_manutencao(
 
 
 @app.get("/cadastro", response_class=HTMLResponse)
-def tela_cadastro(msg: Optional[str] = None):
+def tela_cadastro(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     return render_tela_cadastro_manutencao(msg=msg, modo="cadastro")
 
 
 @app.get("/manutencao", response_class=HTMLResponse)
 def tela_manutencao(
+    request: Request,
     msg: Optional[str] = None,
     busca_local: str = "",
     busca_evento: str = "",
     pagina_local: int = 1,
     pagina_evento: int = 1,
 ):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     return render_tela_cadastro_manutencao(
         msg=msg,
         modo="manutencao",
@@ -864,21 +1245,28 @@ def tela_manutencao(
 
 @app.post("/cadastro/local")
 def cadastrar_local(
+    request: Request,
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form("1"),
 ):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = Local(
             nome=nome,
             endereco=endereco,
             regiao=regiao,
+            tipo_evento=normalizar_tipo_evento(tipo_evento),
             latitude=latitude,
             longitude=longitude,
             acessibilidade=bool(acessibilidade),
@@ -894,14 +1282,20 @@ def cadastrar_local(
 
 @app.post("/cadastro/evento")
 def cadastrar_evento(
+    request: Request,
     nome: str = Form(...),
     descricao: str = Form(...),
     data_inicio: str = Form(...),
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -924,6 +1318,7 @@ def cadastrar_evento(
             data_fim=data_fim_dt,
             publico_estimado=publico_estimado,
             porte=porte,
+            tipo_evento=normalizar_tipo_evento(tipo_evento),
             local_id=local_id,
         )
         db.add(evento)
@@ -935,16 +1330,22 @@ def cadastrar_evento(
 
 @app.post("/cadastro/local/{local_id}/editar")
 def editar_local(
+    request: Request,
     local_id: int,
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form(None),
 ):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -954,6 +1355,7 @@ def editar_local(
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
+        local.tipo_evento = normalizar_tipo_evento(tipo_evento)
         local.latitude = latitude
         local.longitude = longitude
         local.acessibilidade = bool(acessibilidade)
@@ -966,7 +1368,11 @@ def editar_local(
 
 
 @app.post("/cadastro/local/{local_id}/excluir")
-def excluir_local(local_id: int):
+def excluir_local(request: Request, local_id: int):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -983,6 +1389,7 @@ def excluir_local(local_id: int):
 
 @app.post("/cadastro/evento/{evento_id}/editar")
 def editar_evento(
+    request: Request,
     evento_id: int,
     nome: str = Form(...),
     descricao: str = Form(...),
@@ -990,8 +1397,13 @@ def editar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         evento = db.query(Evento).filter(Evento.id == evento_id).first()
@@ -1017,6 +1429,7 @@ def editar_evento(
         evento.data_fim = data_fim_dt
         evento.publico_estimado = publico_estimado
         evento.porte = porte
+        evento.tipo_evento = normalizar_tipo_evento(tipo_evento)
         evento.local_id = local_id
         db.commit()
         return RedirectResponse(url="/manutencao?msg=evento_edit_ok", status_code=303)
@@ -1025,7 +1438,11 @@ def editar_evento(
 
 
 @app.post("/cadastro/evento/{evento_id}/excluir")
-def excluir_evento(evento_id: int):
+def excluir_evento(request: Request, evento_id: int):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         evento = db.query(Evento).filter(Evento.id == evento_id).first()
@@ -1040,7 +1457,11 @@ def excluir_evento(evento_id: int):
 
 
 @app.get("/mapa-locais", response_class=HTMLResponse)
-def mapa_locais():
+def mapa_locais(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         locais = db.query(Local).all()
@@ -1081,21 +1502,33 @@ def mapa_locais():
 
 
 @app.get("/eventos")
-def listar_eventos():
+def listar_eventos(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     eventos = db.query(Evento).all()
     return eventos
 
 
 @app.get("/eventos/porte/{porte}")
-def eventos_por_porte(porte: str):
+def eventos_por_porte(request: Request, porte: str):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     eventos = db.query(Evento).filter(Evento.porte == porte).all()
     return eventos
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos():
+def mapa_eventos(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).all()
@@ -1138,6 +1571,7 @@ def mapa_eventos():
             Data: {evento.data_inicio} a {evento.data_fim}<br>
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
+            Tipo: {evento.tipo_evento}<br>
             Local: {evento.local.nome}
             {link_rota_html(lat, lon, map_name, evento.local.nome)}
             """
@@ -1166,10 +1600,21 @@ def mapa_eventos():
 
 
 @app.get("/calendario", response_class=HTMLResponse)
-def calendario_eventos():
+def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     locais = db.query(Local).all()
-    eventos = db.query(Evento).join(Local).all()
+    tipo_evento_selecionado = "Todos"
+    if tipo_evento in TIPOS_EVENTO:
+        tipo_evento_selecionado = tipo_evento
+
+    query_eventos = db.query(Evento).join(Local)
+    if tipo_evento_selecionado != "Todos":
+        query_eventos = query_eventos.filter(Evento.tipo_evento == tipo_evento_selecionado)
+    eventos = query_eventos.all()
     regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
     # Encontrar todos os meses com eventos
@@ -1212,6 +1657,11 @@ def calendario_eventos():
             .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
             .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
+            .filtro-wrap { margin: 10px 20px 0 20px; display: flex; align-items: center; gap: 10px; }
+            .filtro-wrap label { font-weight: bold; }
+            .filtro-wrap select { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; min-width: 170px; }
+            .filtro-wrap button { padding: 8px 14px; border-radius: 6px; border: none; background: #1f2937; color: #fff; font-weight: 600; cursor: pointer; }
+            .filtro-wrap button:hover { background: #111827; }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
@@ -1227,6 +1677,13 @@ def calendario_eventos():
             <img class="logo" src="https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg" alt="Logo BH">
             <h1>Calendário de Eventos de Belo Horizonte</h1>
         </div>
+        <form class="filtro-wrap" method="get" action="/calendario">
+            <label for="tipo_evento">Tipo de evento:</label>
+            <select name="tipo_evento" id="tipo_evento">
+                {opcoes_tipo_evento_html}
+            </select>
+            <button type="submit">Filtrar</button>
+        </form>
         <div class="legenda">
             {legendas_html}
         </div>
@@ -1235,6 +1692,12 @@ def calendario_eventos():
                 <th>Local</th>
     """
     html = html.replace("{legendas_html}", legendas_html)
+
+    opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
+    for tipo in TIPOS_EVENTO:
+        selected = " selected" if tipo == tipo_evento_selecionado else ""
+        opcoes_tipo_evento_html += f'<option value="{tipo}"{selected}>{tipo}</option>'
+    html = html.replace("{opcoes_tipo_evento_html}", opcoes_tipo_evento_html)
 
     # Cabeçalhos dos meses
     for ano_mes, mes in meses_ordenados:
@@ -1245,6 +1708,7 @@ def calendario_eventos():
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
+        tipo_local_html = f'<div class="infra-icons"><span class="infra-tag" title="Tipo principal do local">🏷️ {escape(normalizar_tipo_evento(local.tipo_evento))}</span></div>'
         acessibilidade_html = ""
         proximo_metro_html = ""
         restaurantes_html = ""
@@ -1259,7 +1723,7 @@ def calendario_eventos():
         if acessibilidade_html or proximo_metro_html or restaurantes_html:
             infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}{restaurantes_html}</div>'
 
-        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{infra_local_html}</td>"
+        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{tipo_local_html}{infra_local_html}</td>"
         
         for ano_mes, mes in meses_ordenados:
             # Obter todos os eventos deste mês para este local

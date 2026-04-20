@@ -58,6 +58,7 @@ def seed():
                     regiao=row["REGIAO"],
                     latitude=row["LATITUDE"],
                     longitude=row["LONGITUDE"],
+                    tipo_evento="Negócios",
                     acessibilidade=True,
                     proximo_metro=True,
                     restaurantes=True,
@@ -76,6 +77,7 @@ def seed():
                 data_fim=parse_date(row["DATA_FIM"]),
                 publico_estimado=row["PUBLICO_ESTIMADO"],
                 porte=row["PORTE_EVENTO"],
+                tipo_evento="Negócios",
                 local_id=local_id
             )
             db.add(evento)
