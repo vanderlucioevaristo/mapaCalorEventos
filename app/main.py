@@ -422,14 +422,59 @@ def _oauth_redirect_uri(request: Request, provider: str) -> str:
     return f"{_oauth_base_url(request)}/auth/{provider}/callback"
 
 
+USUARIO_MESTRE = {
+    "provider": "sistema",
+    "id": "mestre",
+    "name": "Administrador",
+    "email": "admin@sistema.local",
+    "admin": True,
+}
+
+EMAILS_ADMIN = {
+    "vanderlucio.evaristo@gmail.com",
+    "vanderlucioevaristo@gmail.com",
+}
+
+REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
+
+
+def _usuario_atual(request: Request) -> dict:
+    """Retorna o usuário da sessão ou o mestre quando login não é exigido."""
+    if not REQUIRE_LOGIN:
+        return request.session.get("user") or USUARIO_MESTRE
+    return request.session.get("user") or {}
+
+
+def _eh_admin(user: dict) -> bool:
+    if user.get("admin"):
+        return True
+    email = (user.get("email") or "").lower()
+    return email in {e.lower() for e in EMAILS_ADMIN}
+
+
 def _redirect_se_nao_autenticado(request: Request):
-    if not request.session.get("user"):
+    user = _usuario_atual(request)
+    if not user:
         return RedirectResponse(url="/login", status_code=303)
+    # Garante que a sessão reflita o usuário mestre quando login não é exigido
+    if not REQUIRE_LOGIN and not request.session.get("user"):
+        request.session["user"] = USUARIO_MESTRE
+    return None
+
+
+def _redirect_se_nao_admin(request: Request):
+    user = _usuario_atual(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not _eh_admin(user):
+        return RedirectResponse(url="/?acesso=negado", status_code=303)
     return None
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
     if request.session.get("user"):
         return RedirectResponse(url="/", status_code=303)
 
@@ -574,8 +619,14 @@ def home(request: Request):
     if redirect:
         return redirect
 
-    user = request.session.get("user", {})
+    user = _usuario_atual(request)
     user_name = escape(user.get("name") or "Usuário")
+    acesso_negado = request.query_params.get("acesso") == "negado"
+    aviso_acesso_html = (
+        '<div style="background:#fee2e2;color:#991b1b;padding:10px 16px;border-radius:8px;margin-bottom:16px;">'
+        'Acesso restrito. Você não tem permissão para acessar essa área.</div>'
+    ) if acesso_negado else ""
+    is_admin = _eh_admin(user)
     return f"""
     <html>
     <head>
@@ -604,6 +655,7 @@ def home(request: Request):
                 <a class="logout" href="/logout">Sair</a>
             </div>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
+            {aviso_acesso_html}
             <div class="menu">
                 <a class="card" href="/mapa">
                     <h2>Mapa de Eventos</h2>
@@ -617,14 +669,8 @@ def home(request: Request):
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
-                <a class="card" href="/cadastro">
-                    <h2>Cadastrar Evento/Local</h2>
-                    <p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p>
-                </a>
-                <a class="card" href="/manutencao">
-                    <h2>Manutenção</h2>
-                    <p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p>
-                </a>
+                {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
             <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados.</div>
         </div>
@@ -1105,7 +1151,7 @@ def render_tela_cadastro_manutencao(
 
 @app.get("/cadastro", response_class=HTMLResponse)
 def tela_cadastro(request: Request, msg: Optional[str] = None):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1121,7 +1167,7 @@ def tela_manutencao(
     pagina_local: int = 1,
     pagina_evento: int = 1,
 ):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1141,13 +1187,14 @@ def cadastrar_local(
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    # --- guard ---
     latitude: float = Form(...),
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form("1"),
 ):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1181,7 +1228,7 @@ def cadastrar_evento(
     porte: str = Form(...),
     local_id: int = Form(...),
 ):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1229,7 +1276,7 @@ def editar_local(
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form(None),
 ):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1255,7 +1302,7 @@ def editar_local(
 
 @app.post("/cadastro/local/{local_id}/excluir")
 def excluir_local(request: Request, local_id: int):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1285,7 +1332,7 @@ def editar_evento(
     porte: str = Form(...),
     local_id: int = Form(...),
 ):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
@@ -1323,7 +1370,7 @@ def editar_evento(
 
 @app.post("/cadastro/evento/{evento_id}/excluir")
 def excluir_evento(request: Request, evento_id: int):
-    redirect = _redirect_se_nao_autenticado(request)
+    redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
