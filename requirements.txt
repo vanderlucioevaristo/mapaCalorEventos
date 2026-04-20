@@ -5,3 +5,7 @@ pydantic
 pandas
 pytest
 folium
+Authlib
+itsdangerous
+httpx
+python-dotenv

@@ -1,9 +1,12 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from dotenv import load_dotenv
+from starlette.middleware.sessions import SessionMiddleware
 import folium
 from folium.plugins import MarkerCluster
 import calendar
@@ -12,6 +15,11 @@ from html import escape
 from typing import Optional
 import math
 import json
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -358,6 +366,200 @@ def legenda_mapa_html_interativa(
 seed_regionais()
 
 app = FastAPI()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "troque-esta-chave-em-producao"),
+)
+
+oauth = OAuth()
+
+if os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"):
+    oauth.register(
+        name="google",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
+if os.getenv("FACEBOOK_CLIENT_ID") and os.getenv("FACEBOOK_CLIENT_SECRET"):
+    oauth.register(
+        name="facebook",
+        client_id=os.getenv("FACEBOOK_CLIENT_ID"),
+        client_secret=os.getenv("FACEBOOK_CLIENT_SECRET"),
+        access_token_url="https://graph.facebook.com/v19.0/oauth/access_token",
+        authorize_url="https://www.facebook.com/v19.0/dialog/oauth",
+        api_base_url="https://graph.facebook.com/v19.0/",
+        client_kwargs={"scope": "email,public_profile"},
+    )
+
+if os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_CLIENT_SECRET"):
+    oauth.register(
+        name="apple",
+        client_id=os.getenv("APPLE_CLIENT_ID"),
+        client_secret=os.getenv("APPLE_CLIENT_SECRET"),
+        server_metadata_url="https://appleid.apple.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "name email"},
+    )
+
+
+def _provedores_oauth_disponiveis() -> list[str]:
+    provedores = []
+    for nome in ("google", "facebook", "apple"):
+        if oauth.create_client(nome):
+            provedores.append(nome)
+    return provedores
+
+
+def _oauth_base_url(request: Request) -> str:
+    base = os.getenv("OAUTH_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def _oauth_redirect_uri(request: Request, provider: str) -> str:
+    return f"{_oauth_base_url(request)}/auth/{provider}/callback"
+
+
+def _redirect_se_nao_autenticado(request: Request):
+    if not request.session.get("user"):
+        return RedirectResponse(url="/login", status_code=303)
+    return None
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+
+    auth_error = request.query_params.get("erro")
+    provedores = _provedores_oauth_disponiveis()
+    botoes_html = ""
+    for provedor in provedores:
+        rotulo = provedor.capitalize()
+        cor = {
+            "google": "#1a73e8",
+            "facebook": "#1877f2",
+            "apple": "#111827",
+        }.get(provedor, "#2563eb")
+        botoes_html += (
+            f'<a class="btn" style="background:{cor};" href="/auth/{provedor}/login">'
+            f'Entrar com {rotulo}</a>'
+        )
+
+    erro_html = ""
+    if auth_error:
+        erro_html = (
+            '<div class="warn" style="background:#fee2e2;color:#991b1b;">'
+            f'Falha ao autenticar com {escape(auth_error)}. '
+            'Revise as credenciais e a URL de callback configurada.</div>'
+        )
+
+    if not botoes_html:
+        botoes_html = (
+            '<div class="warn">Nenhum provedor OAuth configurado. '
+            'Defina variáveis GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET '
+            'ou APPLE_CLIENT_ID/SECRET.</div>'
+        )
+
+    google_config_html = ""
+    if "google" not in provedores:
+        google_config_html = (
+            '<div class="setup">'
+            '<strong>Google:</strong> configure no Google Cloud Console o redirect URI '
+            f'<code>{escape(_oauth_redirect_uri(request, "google"))}</code> '
+            'e preencha GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no arquivo .env.'
+            '</div>'
+        )
+
+    return f"""
+    <html>
+    <head>
+        <title>Login - Eventos BH</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
+            .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+            .card {{ width: 100%; max-width: 420px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            h1 {{ margin: 0 0 8px; color: #111827; }}
+            p {{ margin: 0 0 20px; color: #4b5563; }}
+            .btn {{ display: block; color: white; text-decoration: none; font-weight: 700; text-align: center; padding: 11px 14px; border-radius: 8px; margin-bottom: 10px; }}
+            .warn {{ background: #fef3c7; color: #92400e; border-radius: 8px; padding: 12px; font-size: 14px; }}
+            .setup {{ margin-top: 14px; background: #eff6ff; color: #1e3a8a; border-radius: 8px; padding: 12px; font-size: 14px; line-height: 1.5; }}
+            code {{ background: #dbeafe; padding: 2px 6px; border-radius: 6px; }}
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="card">
+                <h1>Entrar no Eventos BH</h1>
+                <p>Use uma conta social para acessar o sistema.</p>
+                {erro_html}
+                {botoes_html}
+                {google_config_html}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.get("/auth/{provider}/login")
+async def oauth_login(provider: str, request: Request):
+    client = oauth.create_client(provider)
+    if not client:
+        return RedirectResponse(url="/login", status_code=303)
+
+    redirect_uri = _oauth_redirect_uri(request, provider)
+    kwargs = {}
+    if provider == "google":
+        kwargs["prompt"] = "select_account"
+    return await client.authorize_redirect(request, redirect_uri, **kwargs)
+
+
+@app.get("/auth/{provider}/callback")
+async def oauth_callback(provider: str, request: Request):
+    client = oauth.create_client(provider)
+    if not client:
+        return RedirectResponse(url="/login", status_code=303)
+
+    try:
+        token = await client.authorize_access_token(request)
+    except OAuthError:
+        return RedirectResponse(url=f"/login?erro={provider}", status_code=303)
+
+    profile = {}
+    if provider == "google":
+        profile = token.get("userinfo") or {}
+        if not profile:
+            try:
+                profile = await client.parse_id_token(request, token)
+            except Exception:
+                profile = {}
+    elif provider == "facebook":
+        response = await client.get("me?fields=id,name,email,picture", token=token)
+        profile = response.json()
+    elif provider == "apple":
+        profile = token.get("userinfo") or {}
+        if not profile:
+            try:
+                profile = await client.parse_id_token(request, token)
+            except Exception:
+                profile = {}
+
+    request.session["user"] = {
+        "provider": provider,
+        "id": profile.get("sub") or profile.get("id") or "",
+        "name": profile.get("name") or profile.get("email") or "Usuário",
+        "email": profile.get("email") or "",
+    }
+    return RedirectResponse(url="/", status_code=303)
 
 #para executar 
 # cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
@@ -367,27 +569,40 @@ app = FastAPI()
 # .venv/bin/python -m mapaCalorEventos.app.seed
 
 @app.get("/", response_class=HTMLResponse)
-def home():
-    return """
+def home(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
+    user = request.session.get("user", {})
+    user_name = escape(user.get("name") or "Usuário")
+    return f"""
     <html>
     <head>
         <title>Eventos BH</title>
         <style>
-            body { font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }
-            .page { max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
-            h1 { margin-top: 0; color: #1f2937; }
-            p { color: #4b5563; font-size: 16px; line-height: 1.6; }
-            .menu { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }
-            .card { flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }
-            .card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }
-            .card h2 { margin: 0 0 10px; font-size: 22px; }
-            .card p { margin: 0; color: #374151; }
-            .footer { margin-top: 32px; font-size: 14px; color: #6b7280; }
+            body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
+            .page {{ max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }}
+            .top {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
+            .logout {{ text-decoration: none; background: #1f2937; color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: 700; }}
+            .user {{ color: #374151; font-size: 14px; margin-right: auto; margin-left: 12px; }}
+            h1 {{ margin-top: 0; color: #1f2937; }}
+            p {{ color: #4b5563; font-size: 16px; line-height: 1.6; }}
+            .menu {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }}
+            .card {{ flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }}
+            .card:hover {{ transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }}
+            .card h2 {{ margin: 0 0 10px; font-size: 22px; }}
+            .card p {{ margin: 0; color: #374151; }}
+            .footer {{ margin-top: 32px; font-size: 14px; color: #6b7280; }}
         </style>
     </head>
     <body>
         <div class="page">
-            <h1>Eventos BH</h1>
+            <div class="top">
+                <h1>Eventos BH</h1>
+                <span class="user">Conectado como: {user_name}</span>
+                <a class="logout" href="/logout">Sair</a>
+            </div>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             <div class="menu">
                 <a class="card" href="/mapa">
@@ -889,18 +1104,27 @@ def render_tela_cadastro_manutencao(
 
 
 @app.get("/cadastro", response_class=HTMLResponse)
-def tela_cadastro(msg: Optional[str] = None):
+def tela_cadastro(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     return render_tela_cadastro_manutencao(msg=msg, modo="cadastro")
 
 
 @app.get("/manutencao", response_class=HTMLResponse)
 def tela_manutencao(
+    request: Request,
     msg: Optional[str] = None,
     busca_local: str = "",
     busca_evento: str = "",
     pagina_local: int = 1,
     pagina_evento: int = 1,
 ):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     return render_tela_cadastro_manutencao(
         msg=msg,
         modo="manutencao",
@@ -913,6 +1137,7 @@ def tela_manutencao(
 
 @app.post("/cadastro/local")
 def cadastrar_local(
+    request: Request,
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
@@ -922,6 +1147,10 @@ def cadastrar_local(
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form("1"),
 ):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = Local(
@@ -943,6 +1172,7 @@ def cadastrar_local(
 
 @app.post("/cadastro/evento")
 def cadastrar_evento(
+    request: Request,
     nome: str = Form(...),
     descricao: str = Form(...),
     data_inicio: str = Form(...),
@@ -951,6 +1181,10 @@ def cadastrar_evento(
     porte: str = Form(...),
     local_id: int = Form(...),
 ):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -984,6 +1218,7 @@ def cadastrar_evento(
 
 @app.post("/cadastro/local/{local_id}/editar")
 def editar_local(
+    request: Request,
     local_id: int,
     nome: str = Form(...),
     endereco: str = Form(...),
@@ -994,6 +1229,10 @@ def editar_local(
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form(None),
 ):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -1015,7 +1254,11 @@ def editar_local(
 
 
 @app.post("/cadastro/local/{local_id}/excluir")
-def excluir_local(local_id: int):
+def excluir_local(request: Request, local_id: int):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         local = db.query(Local).filter(Local.id == local_id).first()
@@ -1032,6 +1275,7 @@ def excluir_local(local_id: int):
 
 @app.post("/cadastro/evento/{evento_id}/editar")
 def editar_evento(
+    request: Request,
     evento_id: int,
     nome: str = Form(...),
     descricao: str = Form(...),
@@ -1041,6 +1285,10 @@ def editar_evento(
     porte: str = Form(...),
     local_id: int = Form(...),
 ):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         evento = db.query(Evento).filter(Evento.id == evento_id).first()
@@ -1074,7 +1322,11 @@ def editar_evento(
 
 
 @app.post("/cadastro/evento/{evento_id}/excluir")
-def excluir_evento(evento_id: int):
+def excluir_evento(request: Request, evento_id: int):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         evento = db.query(Evento).filter(Evento.id == evento_id).first()
@@ -1089,7 +1341,11 @@ def excluir_evento(evento_id: int):
 
 
 @app.get("/mapa-locais", response_class=HTMLResponse)
-def mapa_locais():
+def mapa_locais(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         locais = db.query(Local).all()
@@ -1130,21 +1386,33 @@ def mapa_locais():
 
 
 @app.get("/eventos")
-def listar_eventos():
+def listar_eventos(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     eventos = db.query(Evento).all()
     return eventos
 
 
 @app.get("/eventos/porte/{porte}")
-def eventos_por_porte(porte: str):
+def eventos_por_porte(request: Request, porte: str):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     eventos = db.query(Evento).filter(Evento.porte == porte).all()
     return eventos
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos():
+def mapa_eventos(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).all()
@@ -1215,7 +1483,11 @@ def mapa_eventos():
 
 
 @app.get("/calendario", response_class=HTMLResponse)
-def calendario_eventos():
+def calendario_eventos(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
     db: Session = SessionLocal()
     locais = db.query(Local).all()
     eventos = db.query(Evento).join(Local).all()
