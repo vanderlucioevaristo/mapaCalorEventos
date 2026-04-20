@@ -155,6 +155,18 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
     '''
 
 
+def atalho_inicio_mapa_html() -> str:
+    return '''
+    <div style="position: fixed;
+                top: 12px; left: 64px; z-index: 9999;
+                background: white; border: 2px solid #e5e7eb;
+                border-radius: 8px; padding: 8px 10px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.12);">
+        <a href="/" style="text-decoration:none; color:#111827; font-weight:700;">Início</a>
+    </div>
+    '''
+
+
 def recursos_rota_mapa_html(map_name: str) -> str:
     map_name_json = json.dumps(map_name)
     return f'''
@@ -677,6 +689,7 @@ def login_page(request: Request):
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
             .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
             .card {{ width: 100%; max-width: 420px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            .home-link {{ display: inline-block; margin-bottom: 12px; text-decoration: none; color: #1f2937; font-weight: 700; }}
             h1 {{ margin: 0 0 8px; color: #111827; }}
             p {{ margin: 0 0 20px; color: #4b5563; }}
             .btn {{ display: block; color: white; text-decoration: none; font-weight: 700; text-align: center; padding: 11px 14px; border-radius: 8px; margin-bottom: 10px; }}
@@ -688,6 +701,7 @@ def login_page(request: Request):
     <body>
         <div class="wrap">
             <div class="card">
+                <a class="home-link" href="/">Início</a>
                 <h1>Entrar no Eventos BH</h1>
                 <p>Use uma conta social para acessar o sistema.</p>
                 {erro_html}
@@ -1584,6 +1598,7 @@ def mapa_locais(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
@@ -1652,6 +1667,7 @@ def mapa_eventos(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -1798,6 +1814,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     </head>
     <body>
         <div class="toolbar">
+            <a href="/" style="text-decoration:none; color:#111827; font-weight:700; margin-right:auto;">Início</a>
             <label for="formato_exportacao">Formato:</label>
             <select id="formato_exportacao">
                 <option value="16x9" selected>16:9 paisagem</option>
