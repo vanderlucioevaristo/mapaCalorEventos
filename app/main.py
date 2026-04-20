@@ -18,8 +18,18 @@ import json
 import os
 from pathlib import Path
 
+
+
+#para executar 
+# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
+# python3 mapaCalorEventos/app/main.py
+
+# uvicorn mapaCalorEventos.app.main:app --reload --port 8004
+# .venv/bin/python -m mapaCalorEventos.app.seed
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
+ENV_FILE_PATH = BASE_DIR / ".env"
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -150,6 +160,18 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
                 padding: 10px">
     <b>{escape(cabecalho)}</b><br>
     {itens}
+    </div>
+    '''
+
+
+def atalho_inicio_mapa_html() -> str:
+    return '''
+    <div style="position: fixed;
+                top: 12px; left: 64px; z-index: 9999;
+                background: white; border: 2px solid #e5e7eb;
+                border-radius: 8px; padding: 8px 10px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.12);">
+        <a href="/" style="text-decoration:none; color:#111827; font-weight:700;">Início</a>
     </div>
     '''
 
@@ -474,6 +496,11 @@ EMAILS_ADMIN = {
 }
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
+EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
+LOGO_URL = os.getenv(
+    "LOGO_URL",
+    "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
+).strip()
 
 
 def _usuario_atual(request: Request) -> dict:
@@ -507,6 +534,113 @@ def _redirect_se_nao_admin(request: Request):
     if not _eh_admin(user):
         return RedirectResponse(url="/?acesso=negado", status_code=303)
     return None
+
+
+def _atualizar_variavel_env(chave: str, valor: str) -> None:
+    conteudo = ENV_FILE_PATH.read_text(encoding="utf-8") if ENV_FILE_PATH.exists() else ""
+    linhas = conteudo.splitlines()
+    prefixo = f"{chave}="
+    atualizada = False
+
+    for i, linha in enumerate(linhas):
+        if linha.startswith(prefixo):
+            linhas[i] = f"{chave}={valor}"
+            atualizada = True
+            break
+
+    if not atualizada:
+        if linhas and linhas[-1].strip() != "":
+            linhas.append("")
+        linhas.append(f"{chave}={valor}")
+
+    ENV_FILE_PATH.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+
+
+@app.get("/configuracoes", response_class=HTMLResponse)
+def pagina_configuracoes(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    exibir_logo_checked = "checked" if EXIBIR_LOGO else ""
+    logo_url_valor = escape(LOGO_URL or "")
+    msg_html = ""
+    if msg == "ok":
+        msg_html = '<div class="msg ok">Configurações salvas com sucesso.</div>'
+    elif msg == "erro":
+        msg_html = '<div class="msg erro">Não foi possível salvar as configurações.</div>'
+
+    return f"""
+    <html>
+    <head>
+        <title>Configurações - Eventos BH</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+            .page {{ max-width: 740px; margin: 0 auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+            h1 {{ margin-top: 0; color: #1f2937; }}
+            .desc {{ color: #4b5563; margin-bottom: 20px; }}
+            label {{ display: block; margin: 10px 0 6px; font-weight: 700; color: #111827; }}
+            input[type='text'] {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }}
+            .check {{ display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; }}
+            .check input {{ width: 16px; height: 16px; }}
+            .actions {{ margin-top: 18px; display: flex; gap: 10px; }}
+            .btn {{ border: none; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }}
+            .btn-primary {{ background: #1f2937; color: #fff; }}
+            .btn-secondary {{ background: #e5e7eb; color: #111827; }}
+            .msg {{ border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }}
+            .ok {{ background: #dcfce7; color: #166534; }}
+            .erro {{ background: #fee2e2; color: #991b1b; }}
+        </style>
+    </head>
+    <body>
+        <div class="page">
+            <h1>Configurações Visuais</h1>
+            <div class="desc">Altere os parâmetros globais de exibição de logo do sistema.</div>
+            {msg_html}
+            <form method="post" action="/configuracoes">
+                <label class="check">
+                    <input type="checkbox" name="exibir_logo" value="1" {exibir_logo_checked} />
+                    Exibir logo nas páginas que usam essa configuração
+                </label>
+
+                <label for="logo_url">URL do logo</label>
+                <input id="logo_url" type="text" name="logo_url" value="{logo_url_valor}" placeholder="https://..." />
+
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit">Salvar</button>
+                    <a class="btn btn-secondary" href="/">Voltar</a>
+                </div>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/configuracoes")
+def salvar_configuracoes(
+    request: Request,
+    exibir_logo: Optional[str] = Form(None),
+    logo_url: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    global EXIBIR_LOGO, LOGO_URL
+
+    try:
+        novo_exibir_logo = bool(exibir_logo)
+        nova_logo_url = (logo_url or "").strip()
+
+        _atualizar_variavel_env("EXIBIR_LOGO", "true" if novo_exibir_logo else "false")
+        _atualizar_variavel_env("LOGO_URL", nova_logo_url)
+
+        EXIBIR_LOGO = novo_exibir_logo
+        LOGO_URL = nova_logo_url
+        return RedirectResponse(url="/configuracoes?msg=ok", status_code=303)
+    except Exception:
+        return RedirectResponse(url="/configuracoes?msg=erro", status_code=303)
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -564,6 +698,7 @@ def login_page(request: Request):
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
             .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
             .card {{ width: 100%; max-width: 420px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            .home-link {{ display: inline-block; margin-bottom: 12px; text-decoration: none; color: #1f2937; font-weight: 700; }}
             h1 {{ margin: 0 0 8px; color: #111827; }}
             p {{ margin: 0 0 20px; color: #4b5563; }}
             .btn {{ display: block; color: white; text-decoration: none; font-weight: 700; text-align: center; padding: 11px 14px; border-radius: 8px; margin-bottom: 10px; }}
@@ -575,6 +710,7 @@ def login_page(request: Request):
     <body>
         <div class="wrap">
             <div class="card">
+                <a class="home-link" href="/">Início</a>
                 <h1>Entrar no Eventos BH</h1>
                 <p>Use uma conta social para acessar o sistema.</p>
                 {erro_html}
@@ -644,12 +780,6 @@ async def oauth_callback(provider: str, request: Request):
     }
     return RedirectResponse(url="/", status_code=303)
 
-#para executar 
-# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
-# python3 mapaCalorEventos/app/main.py
-
-# uvicorn mapaCalorEventos.app.main:app --reload --port 8001
-# .venv/bin/python -m mapaCalorEventos.app.seed
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -707,6 +837,7 @@ def home(request: Request):
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
+                {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
@@ -1470,6 +1601,7 @@ def mapa_locais(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
@@ -1538,6 +1670,7 @@ def mapa_eventos(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -1648,12 +1781,22 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
         ]
     )
 
+    logo_html = ""
+    if EXIBIR_LOGO and LOGO_URL:
+        logo_html = f'<img class="logo" src="{escape(LOGO_URL)}" alt="Logo BH">'
+
     html = """
     <html>
     <head>
         <title>Calendário de Eventos BH</title>
+        <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
             body { font-family: Arial, sans-serif; }
+            .toolbar { margin: 10px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+            .toolbar label { font-weight: 700; color: #111827; }
+            .toolbar select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d1d5db; }
+            .btn-exportar { padding: 10px 14px; border-radius: 8px; border: none; background: #166534; color: #fff; font-weight: 700; cursor: pointer; }
+            .btn-exportar:hover { background: #14532d; }
             .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
             .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
@@ -1673,8 +1816,18 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
         </style>
     </head>
     <body>
+        <div class="toolbar">
+            <a href="/" style="text-decoration:none; color:#111827; font-weight:700; margin-right:auto;">Início</a>
+            <label for="formato_exportacao">Formato:</label>
+            <select id="formato_exportacao">
+                <option value="16x9" selected>16:9 paisagem</option>
+                <option value="a4">A4 paisagem</option>
+            </select>
+            <button type="button" class="btn-exportar" onclick="exportarCalendarioJPG()">Salvar calendário como JPG</button>
+        </div>
+        <div id="calendario-exportavel">
         <div class="header">
-            <img class="logo" src="https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg" alt="Logo BH">
+            {logo_html}
             <h1>Calendário de Eventos de Belo Horizonte</h1>
         </div>
         <form class="filtro-wrap" method="get" action="/calendario">
@@ -1692,6 +1845,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
                 <th>Local</th>
     """
     html = html.replace("{legendas_html}", legendas_html)
+    html = html.replace("{logo_html}", logo_html)
 
     opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
     for tipo in TIPOS_EVENTO:
@@ -1773,5 +1927,58 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     </tr>
     """
 
-    html += "</table></body></html>"
+    html += "</table></div>"
+    html += """
+    <script>
+        async function exportarCalendarioJPG() {
+            const area = document.getElementById('calendario-exportavel');
+            if (!area || typeof html2canvas === 'undefined') {
+                alert('Não foi possível gerar a imagem agora.');
+                return;
+            }
+
+            const canvas = await html2canvas(area, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+
+            // Força saída em paisagem no formato escolhido.
+            const formato = (document.getElementById('formato_exportacao') || {}).value || '16x9';
+            const proporcao = formato === 'a4' ? (1.4142) : (16 / 9);
+
+            const origemLargura = canvas.width;
+            const origemAltura = canvas.height;
+            let saidaLargura = origemLargura;
+            let saidaAltura = Math.round(saidaLargura / proporcao);
+
+            if (saidaAltura < origemAltura) {
+                saidaAltura = origemAltura;
+                saidaLargura = Math.round(saidaAltura * proporcao);
+            }
+
+            const canvasPaisagem = document.createElement('canvas');
+            canvasPaisagem.width = saidaLargura;
+            canvasPaisagem.height = saidaAltura;
+            const ctx = canvasPaisagem.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, saidaLargura, saidaAltura);
+
+            const escala = Math.min(saidaLargura / origemLargura, saidaAltura / origemAltura);
+            const larguraRender = origemLargura * escala;
+            const alturaRender = origemAltura * escala;
+            const offsetX = (saidaLargura - larguraRender) / 2;
+            const offsetY = (saidaAltura - alturaRender) / 2;
+            ctx.drawImage(canvas, offsetX, offsetY, larguraRender, alturaRender);
+
+            const link = document.createElement('a');
+            const dataAtual = new Date().toISOString().slice(0, 10);
+            link.download = `calendario-eventos-${dataAtual}.jpg`;
+            link.href = canvasPaisagem.toDataURL('image/jpeg', 0.95);
+            link.click();
+        }
+    </script>
+    </body>
+    </html>
+    """
     return html
