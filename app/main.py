@@ -115,58 +115,84 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         window.routeLayer_{map_name} = null;
         window.routeOriginMarker_{map_name} = null;
         window.routeDestinationMarker_{map_name} = null;
+        window.selectedOrigin_{map_name} = null;
+
+        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (window.routeLayer_{map_name}) {{
+                mapa.removeLayer(window.routeLayer_{map_name});
+            }}
+            if (window.routeOriginMarker_{map_name}) {{
+                mapa.removeLayer(window.routeOriginMarker_{map_name});
+            }}
+            if (window.routeDestinationMarker_{map_name}) {{
+                mapa.removeLayer(window.routeDestinationMarker_{map_name});
+            }}
+
+            window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
+                .addTo(mapa)
+                .bindPopup(origemNome || 'Origem');
+
+            window.routeDestinationMarker_{map_name} = L.marker([destLat, destLon])
+                .addTo(mapa)
+                .bindPopup(destinoNome || 'Destino');
+
+            const url = `https://router.project-osrm.org/route/v1/driving/${{origLon}},${{origLat}};${{destLon}},${{destLat}}?overview=full&geometries=geojson`;
+
+            try {{
+                const response = await fetch(url);
+                const data = await response.json();
+                if (!response.ok || !data.routes || !data.routes.length) {{
+                    throw new Error('Rota não encontrada');
+                }}
+
+                const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
+                    return [coord[1], coord[0]];
+                }});
+
+                window.routeLayer_{map_name} = L.polyline(coordinates, {{
+                    color: '#2563eb',
+                    weight: 5,
+                    opacity: 0.85
+                }}).addTo(mapa);
+
+                mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
+            }} catch (error) {{
+                alert('Não foi possível traçar a rota neste momento.');
+            }}
+        }}
+
+        function definirOrigem_{map_name}(origLat, origLon, origemNome) {{
+            window.selectedOrigin_{map_name} = {{
+                lat: origLat,
+                lon: origLon,
+                nome: origemNome || 'Origem selecionada'
+            }};
+            alert(`Origem definida: ${{window.selectedOrigin_{map_name}.nome}}`);
+        }};
+
+        async function tracarRotaOrigemSelecionada_{map_name}(destLat, destLon, destinoNome) {{
+            const origem = window.selectedOrigin_{map_name};
+            if (!origem) {{
+                alert('Defina um ponto de origem em um marcador antes de traçar a rota.');
+                return;
+            }}
+
+            await desenharRota_{map_name}(
+                origem.lat,
+                origem.lon,
+                destLat,
+                destLon,
+                origem.nome,
+                destinoNome || 'Destino'
+            );
+        }}
 
         async function tracarRota_{map_name}(destLat, destLon, destinoNome) {{
             const mapa = window[{map_name_json}];
             if (!mapa) return;
-
-            const limparRotaAnterior = () => {{
-                if (window.routeLayer_{map_name}) {{
-                    mapa.removeLayer(window.routeLayer_{map_name});
-                }}
-                if (window.routeOriginMarker_{map_name}) {{
-                    mapa.removeLayer(window.routeOriginMarker_{map_name});
-                }}
-                if (window.routeDestinationMarker_{map_name}) {{
-                    mapa.removeLayer(window.routeDestinationMarker_{map_name});
-                }}
-            }};
-
-            const iniciarRota = async (origLat, origLon) => {{
-                limparRotaAnterior();
-
-                window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
-                    .addTo(mapa)
-                    .bindPopup('Sua localização');
-
-                window.routeDestinationMarker_{map_name} = L.marker([destLat, destLon])
-                    .addTo(mapa)
-                    .bindPopup(destinoNome || 'Destino');
-
-                const url = `https://router.project-osrm.org/route/v1/driving/${{origLon}},${{origLat}};${{destLon}},${{destLat}}?overview=full&geometries=geojson`;
-
-                try {{
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    if (!response.ok || !data.routes || !data.routes.length) {{
-                        throw new Error('Rota não encontrada');
-                    }}
-
-                    const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
-                        return [coord[1], coord[0]];
-                    }});
-
-                    window.routeLayer_{map_name} = L.polyline(coordinates, {{
-                        color: '#2563eb',
-                        weight: 5,
-                        opacity: 0.85
-                    }}).addTo(mapa);
-
-                    mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
-                }} catch (error) {{
-                    alert('Não foi possível traçar a rota neste momento.');
-                }}
-            }};
 
             if (!navigator.geolocation) {{
                 alert('Geolocalização não disponível neste navegador.');
@@ -175,7 +201,14 @@ def recursos_rota_mapa_html(map_name: str) -> str:
 
             navigator.geolocation.getCurrentPosition(
                 async function(posicao) {{
-                    iniciarRota(posicao.coords.latitude, posicao.coords.longitude);
+                    await desenharRota_{map_name}(
+                        posicao.coords.latitude,
+                        posicao.coords.longitude,
+                        destLat,
+                        destLon,
+                        'Sua localização',
+                        destinoNome || 'Destino'
+                    );
                 }},
                 function() {{
                     alert('Não foi possível obter sua localização para traçar a rota.');
@@ -191,8 +224,14 @@ def link_rota_html(latitude: float, longitude: float, map_name: str, destino_nom
     destino_nome_json = json.dumps(destino_nome)
     return (
         '<br><br>'
+        f"<button type=\"button\" onclick='definirOrigem_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; margin-right:6px; margin-bottom:6px; padding:6px 10px; background:#334155; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Definir origem</button>'
+        f"<button type=\"button\" onclick='tracarRotaOrigemSelecionada_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; margin-right:6px; margin-bottom:6px; padding:6px 10px; background:#0f766e; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Rota da origem selecionada</button>'
         f"<button type=\"button\" onclick='tracarRota_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
-        'style="display:inline-block; padding:6px 10px; background:#2563eb; color:white; '
+        'style="display:inline-block; margin-bottom:6px; padding:6px 10px; background:#2563eb; color:white; '
         'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Traçar rota</button>'
     )
 
