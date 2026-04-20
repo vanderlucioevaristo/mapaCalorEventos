@@ -60,6 +60,7 @@ def seed():
                     longitude=row["LONGITUDE"],
                     acessibilidade=True,
                     proximo_metro=True,
+                    restaurantes=True,
                 )
                 db.add(local)
                 db.flush()  # Para obter o ID

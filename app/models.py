@@ -21,6 +21,7 @@ class Local(Base):
     longitude = Column(Float)
     acessibilidade = Column(Boolean, default=False, nullable=False)
     proximo_metro = Column(Boolean, default=False, nullable=False)
+    restaurantes = Column(Boolean, default=True, nullable=False)
 
     eventos = relationship("Evento", back_populates="local")
 

@@ -37,6 +37,12 @@ def garantir_colunas_locais():
                     "ALTER TABLE locais ADD COLUMN proximo_metro INTEGER NOT NULL DEFAULT 0"
                 )
             )
+        if "restaurantes" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN restaurantes INTEGER NOT NULL DEFAULT 1"
+                )
+            )
 
 
 garantir_colunas_locais()
@@ -422,6 +428,7 @@ def render_tela_cadastro_manutencao(
             local_regiao = escape(local.regiao or "")
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
+            local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             locais_existentes_html += f"""
             <div class="item-row">
                 <div class="item-name">{local_nome}</div>
@@ -461,6 +468,10 @@ def render_tela_cadastro_manutencao(
                             <label class="check-label">
                                 <input type="checkbox" name="proximo_metro" value="1" {local_proximo_metro_checked} />
                                 Próximo do metrô
+                            </label>
+                            <label class="check-label">
+                                <input type="checkbox" name="restaurantes" value="1" {local_restaurantes_checked} />
+                                Possui restaurantes
                             </label>
                         </div>
 
@@ -643,6 +654,10 @@ def render_tela_cadastro_manutencao(
                                     <input type="checkbox" name="proximo_metro" value="1" />
                                     Próximo do metrô
                                 </label>
+                                <label class="check-label">
+                                    <input type="checkbox" name="restaurantes" value="1" checked />
+                                    Possui restaurantes
+                                </label>
                             </div>
 
                             <button type="submit">Salvar local</button>
@@ -817,6 +832,7 @@ def cadastrar_local(
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
+    restaurantes: Optional[str] = Form("1"),
 ):
     db: Session = SessionLocal()
     try:
@@ -828,6 +844,7 @@ def cadastrar_local(
             longitude=longitude,
             acessibilidade=bool(acessibilidade),
             proximo_metro=bool(proximo_metro),
+            restaurantes=bool(restaurantes),
         )
         db.add(local)
         db.commit()
@@ -887,6 +904,7 @@ def editar_local(
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
+    restaurantes: Optional[str] = Form(None),
 ):
     db: Session = SessionLocal()
     try:
@@ -901,6 +919,7 @@ def editar_local(
         local.longitude = longitude
         local.acessibilidade = bool(acessibilidade)
         local.proximo_metro = bool(proximo_metro)
+        local.restaurantes = bool(restaurantes)
         db.commit()
         return RedirectResponse(url="/manutencao?msg=local_edit_ok", status_code=303)
     finally:
@@ -1189,14 +1208,17 @@ def calendario_eventos():
         cor_regiao = cores.get(local.regiao, "gray")
         acessibilidade_html = ""
         proximo_metro_html = ""
+        restaurantes_html = ""
         if bool(local.acessibilidade):
             acessibilidade_html = '<span class="infra-tag" title="Acessibilidade disponível">♿ Acessível</span>'
         if bool(local.proximo_metro):
             proximo_metro_html = '<span class="infra-tag" title="Próximo ao metrô">🚇 Metrô próximo</span>'
+        if bool(local.restaurantes):
+            restaurantes_html = '<span class="infra-tag" title="Possui restaurantes no local">🍽️ Restaurantes</span>'
 
         infra_local_html = ""
-        if acessibilidade_html or proximo_metro_html:
-            infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}</div>'
+        if acessibilidade_html or proximo_metro_html or restaurantes_html:
+            infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}{restaurantes_html}</div>'
 
         html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{infra_local_html}</td>"
         
