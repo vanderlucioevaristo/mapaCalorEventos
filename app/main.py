@@ -102,6 +102,95 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
     '''
 
 
+def recursos_rota_mapa_html(map_name: str) -> str:
+    map_name_json = json.dumps(map_name)
+    return f'''
+    <script>
+        window.routeLayer_{map_name} = null;
+        window.routeOriginMarker_{map_name} = null;
+        window.routeDestinationMarker_{map_name} = null;
+
+        async function tracarRota_{map_name}(destLat, destLon, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            const limparRotaAnterior = () => {{
+                if (window.routeLayer_{map_name}) {{
+                    mapa.removeLayer(window.routeLayer_{map_name});
+                }}
+                if (window.routeOriginMarker_{map_name}) {{
+                    mapa.removeLayer(window.routeOriginMarker_{map_name});
+                }}
+                if (window.routeDestinationMarker_{map_name}) {{
+                    mapa.removeLayer(window.routeDestinationMarker_{map_name});
+                }}
+            }};
+
+            const iniciarRota = async (origLat, origLon) => {{
+                limparRotaAnterior();
+
+                window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
+                    .addTo(mapa)
+                    .bindPopup('Sua localização');
+
+                window.routeDestinationMarker_{map_name} = L.marker([destLat, destLon])
+                    .addTo(mapa)
+                    .bindPopup(destinoNome || 'Destino');
+
+                const url = `https://router.project-osrm.org/route/v1/driving/${{origLon}},${{origLat}};${{destLon}},${{destLat}}?overview=full&geometries=geojson`;
+
+                try {{
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (!response.ok || !data.routes || !data.routes.length) {{
+                        throw new Error('Rota não encontrada');
+                    }}
+
+                    const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
+                        return [coord[1], coord[0]];
+                    }});
+
+                    window.routeLayer_{map_name} = L.polyline(coordinates, {{
+                        color: '#2563eb',
+                        weight: 5,
+                        opacity: 0.85
+                    }}).addTo(mapa);
+
+                    mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
+                }} catch (error) {{
+                    alert('Não foi possível traçar a rota neste momento.');
+                }}
+            }};
+
+            if (!navigator.geolocation) {{
+                alert('Geolocalização não disponível neste navegador.');
+                return;
+            }}
+
+            navigator.geolocation.getCurrentPosition(
+                async function(posicao) {{
+                    iniciarRota(posicao.coords.latitude, posicao.coords.longitude);
+                }},
+                function() {{
+                    alert('Não foi possível obter sua localização para traçar a rota.');
+                }},
+                {{ enableHighAccuracy: true, timeout: 10000 }}
+            );
+        }}
+    </script>
+    '''
+
+
+def link_rota_html(latitude: float, longitude: float, map_name: str, destino_nome: str) -> str:
+    destino_nome_json = json.dumps(destino_nome)
+    return (
+        '<br><br>'
+        f"<button type=\"button\" onclick='tracarRota_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; padding:6px 10px; background:#2563eb; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Traçar rota</button>'
+    )
+
+
 def legenda_mapa_html_interativa(
     regionais: list[str],
     cabecalho: str,
@@ -900,20 +989,25 @@ def mapa_locais():
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        map_name = mapa.get_name()
+        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
 
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
                 continue
+            lat = float(local.latitude)
+            lon = float(local.longitude)
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
             <b>{local.nome}</b><br>
             Endereço: {local.endereco}<br>
             Região: {local.regiao}<br>
-            Lat: {local.latitude}, Lon: {local.longitude}
+            Lat: {lat}, Lon: {lon}
+            {link_rota_html(lat, lon, map_name, local.nome)}
             """
             folium.Marker(
-                location=[local.latitude, local.longitude],
+                location=[lat, lon],
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
@@ -923,7 +1017,7 @@ def mapa_locais():
         mapa.get_root().html.add_child(
             folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
         )
-        return mapa._repr_html_()
+        return mapa.get_root().render()
     finally:
         db.close()
 
@@ -951,6 +1045,8 @@ def mapa_eventos():
 
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        map_name = mapa.get_name()
+        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -985,9 +1081,10 @@ def mapa_eventos():
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
             Local: {evento.local.nome}
+            {link_rota_html(lat, lon, map_name, evento.local.nome)}
             """
             folium.Marker(
-                location=[evento.local.latitude, evento.local.longitude],
+                location=[lat, lon],
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
@@ -1000,12 +1097,12 @@ def mapa_eventos():
                 legenda_mapa_html_interativa(
                     regionais=regionais,
                     cabecalho=cabecalho_legenda,
-                    map_name=mapa.get_name(),
+                    map_name=map_name,
                     bounds_por_regional=bounds_por_regional,
                 )
             )
         )
-        return mapa._repr_html_()
+        return mapa.get_root().render()
     finally:
         db.close()
 
