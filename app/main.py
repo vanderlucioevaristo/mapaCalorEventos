@@ -11,6 +11,7 @@ from datetime import datetime
 from html import escape
 from typing import Optional
 import math
+import json
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
@@ -34,6 +35,12 @@ def garantir_colunas_locais():
             conn.execute(
                 text(
                     "ALTER TABLE locais ADD COLUMN proximo_metro INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        if "restaurantes" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN restaurantes INTEGER NOT NULL DEFAULT 1"
                 )
             )
 
@@ -100,6 +107,205 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
     </div>
     '''
 
+
+def recursos_rota_mapa_html(map_name: str) -> str:
+    map_name_json = json.dumps(map_name)
+    return f'''
+    <script>
+        window.routeLayer_{map_name} = null;
+        window.routeOriginMarker_{map_name} = null;
+        window.routeDestinationMarker_{map_name} = null;
+        window.selectedOrigin_{map_name} = null;
+
+        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (window.routeLayer_{map_name}) {{
+                mapa.removeLayer(window.routeLayer_{map_name});
+            }}
+            if (window.routeOriginMarker_{map_name}) {{
+                mapa.removeLayer(window.routeOriginMarker_{map_name});
+            }}
+            if (window.routeDestinationMarker_{map_name}) {{
+                mapa.removeLayer(window.routeDestinationMarker_{map_name});
+            }}
+
+            window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
+                .addTo(mapa)
+                .bindPopup(origemNome || 'Origem');
+
+            window.routeDestinationMarker_{map_name} = L.marker([destLat, destLon])
+                .addTo(mapa)
+                .bindPopup(destinoNome || 'Destino');
+
+            const url = `https://router.project-osrm.org/route/v1/driving/${{origLon}},${{origLat}};${{destLon}},${{destLat}}?overview=full&geometries=geojson`;
+
+            try {{
+                const response = await fetch(url);
+                const data = await response.json();
+                if (!response.ok || !data.routes || !data.routes.length) {{
+                    throw new Error('Rota não encontrada');
+                }}
+
+                const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
+                    return [coord[1], coord[0]];
+                }});
+
+                window.routeLayer_{map_name} = L.polyline(coordinates, {{
+                    color: '#2563eb',
+                    weight: 5,
+                    opacity: 0.85
+                }}).addTo(mapa);
+
+                mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
+            }} catch (error) {{
+                alert('Não foi possível traçar a rota neste momento.');
+            }}
+        }}
+
+        function definirOrigem_{map_name}(origLat, origLon, origemNome) {{
+            window.selectedOrigin_{map_name} = {{
+                lat: origLat,
+                lon: origLon,
+                nome: origemNome || 'Origem selecionada'
+            }};
+            alert(`Origem definida: ${{window.selectedOrigin_{map_name}.nome}}`);
+        }};
+
+        async function tracarRotaOrigemSelecionada_{map_name}(destLat, destLon, destinoNome) {{
+            const origem = window.selectedOrigin_{map_name};
+            if (!origem) {{
+                alert('Defina um ponto de origem em um marcador antes de traçar a rota.');
+                return;
+            }}
+
+            await desenharRota_{map_name}(
+                origem.lat,
+                origem.lon,
+                destLat,
+                destLon,
+                origem.nome,
+                destinoNome || 'Destino'
+            );
+        }}
+
+        async function tracarRota_{map_name}(destLat, destLon, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (!navigator.geolocation) {{
+                alert('Geolocalização não disponível neste navegador.');
+                return;
+            }}
+
+            navigator.geolocation.getCurrentPosition(
+                async function(posicao) {{
+                    await desenharRota_{map_name}(
+                        posicao.coords.latitude,
+                        posicao.coords.longitude,
+                        destLat,
+                        destLon,
+                        'Sua localização',
+                        destinoNome || 'Destino'
+                    );
+                }},
+                function() {{
+                    alert('Não foi possível obter sua localização para traçar a rota.');
+                }},
+                {{ enableHighAccuracy: true, timeout: 10000 }}
+            );
+        }}
+    </script>
+    '''
+
+
+def link_rota_html(latitude: float, longitude: float, map_name: str, destino_nome: str) -> str:
+    destino_nome_json = json.dumps(destino_nome)
+    return (
+        '<br><br>'
+        f"<button type=\"button\" onclick='definirOrigem_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; margin-right:6px; margin-bottom:6px; padding:6px 10px; background:#334155; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Definir origem</button>'
+        f"<button type=\"button\" onclick='tracarRotaOrigemSelecionada_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; margin-right:6px; margin-bottom:6px; padding:6px 10px; background:#0f766e; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Rota da origem selecionada</button>'
+        f"<button type=\"button\" onclick='tracarRota_{map_name}({latitude}, {longitude}, {destino_nome_json})' "
+        'style="display:inline-block; margin-bottom:6px; padding:6px 10px; background:#2563eb; color:white; '
+        'text-decoration:none; border:none; border-radius:6px; font-weight:600; cursor:pointer;">Traçar rota</button>'
+    )
+
+
+def legenda_mapa_html_interativa(
+    regionais: list[str],
+    cabecalho: str,
+    map_name: str,
+    bounds_por_regional: dict[str, dict[str, float]],
+) -> str:
+    map_name_json = json.dumps(map_name)
+    itens = []
+    for regional in regionais:
+        estilo_ponto = (
+            f'background: {cor_regional(regional)}; width: 10px; height: 10px; '
+            'display: inline-block; margin-right: 6px;'
+        )
+        if regional in bounds_por_regional:
+            itens.append(
+                f'<button type="button" class="legend-link" '
+                f'onclick="zoomParaRegional_{map_name}({json.dumps(regional)})">'
+                f'<i style="{estilo_ponto}"></i>{escape(regional)}</button>'
+            )
+        else:
+            itens.append(
+                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{escape(regional)}</span>'
+            )
+
+    bounds_json = json.dumps(bounds_por_regional)
+    itens_html = "".join(item + "<br>" for item in itens)
+
+    return f'''
+    <div style="position: fixed;
+                top: 50px; left: 50px; width: 290px;
+                background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
+                padding: 10px">
+    <b>{escape(cabecalho)}</b><br>
+    <small>Clique na regional para aproximar</small><br><br>
+    {itens_html}
+    </div>
+    <style>
+        .legend-link {{
+            border: none;
+            background: transparent;
+            padding: 2px 0;
+            cursor: pointer;
+            color: #1d4ed8;
+            text-align: left;
+            font-size: 14px;
+        }}
+        .legend-link:hover {{ text-decoration: underline; }}
+        .legend-disabled {{ color: #6b7280; }}
+    </style>
+    <script>
+        const boundsRegionais_{map_name} = {bounds_json};
+        function zoomParaRegional_{map_name}(regional) {{
+            const bounds = boundsRegionais_{map_name}[regional];
+            if (!bounds) return;
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+            const unicoPonto =
+                bounds.min_lat === bounds.max_lat && bounds.min_lon === bounds.max_lon;
+            if (unicoPonto) {{
+                mapa.setView([bounds.min_lat, bounds.min_lon], 15);
+                return;
+            }}
+            mapa.fitBounds([
+                [bounds.min_lat, bounds.min_lon],
+                [bounds.max_lat, bounds.max_lon]
+            ]);
+        }}
+    </script>
+    '''
+
 seed_regionais()
 
 app = FastAPI()
@@ -132,7 +338,7 @@ def home():
     </head>
     <body>
         <div class="page">
-            <h1>MapaCalorEventos BH</h1>
+            <h1>Eventos BH</h1>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             <div class="menu">
                 <a class="card" href="/mapa">
@@ -261,6 +467,7 @@ def render_tela_cadastro_manutencao(
             local_regiao = escape(local.regiao or "")
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
+            local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             locais_existentes_html += f"""
             <div class="item-row">
                 <div class="item-name">{local_nome}</div>
@@ -300,6 +507,10 @@ def render_tela_cadastro_manutencao(
                             <label class="check-label">
                                 <input type="checkbox" name="proximo_metro" value="1" {local_proximo_metro_checked} />
                                 Próximo do metrô
+                            </label>
+                            <label class="check-label">
+                                <input type="checkbox" name="restaurantes" value="1" {local_restaurantes_checked} />
+                                Possui restaurantes
                             </label>
                         </div>
 
@@ -482,6 +693,10 @@ def render_tela_cadastro_manutencao(
                                     <input type="checkbox" name="proximo_metro" value="1" />
                                     Próximo do metrô
                                 </label>
+                                <label class="check-label">
+                                    <input type="checkbox" name="restaurantes" value="1" checked />
+                                    Possui restaurantes
+                                </label>
                             </div>
 
                             <button type="submit">Salvar local</button>
@@ -656,6 +871,7 @@ def cadastrar_local(
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
+    restaurantes: Optional[str] = Form("1"),
 ):
     db: Session = SessionLocal()
     try:
@@ -667,6 +883,7 @@ def cadastrar_local(
             longitude=longitude,
             acessibilidade=bool(acessibilidade),
             proximo_metro=bool(proximo_metro),
+            restaurantes=bool(restaurantes),
         )
         db.add(local)
         db.commit()
@@ -726,6 +943,7 @@ def editar_local(
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
+    restaurantes: Optional[str] = Form(None),
 ):
     db: Session = SessionLocal()
     try:
@@ -740,6 +958,7 @@ def editar_local(
         local.longitude = longitude
         local.acessibilidade = bool(acessibilidade)
         local.proximo_metro = bool(proximo_metro)
+        local.restaurantes = bool(restaurantes)
         db.commit()
         return RedirectResponse(url="/manutencao?msg=local_edit_ok", status_code=303)
     finally:
@@ -828,20 +1047,25 @@ def mapa_locais():
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        map_name = mapa.get_name()
+        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
 
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
                 continue
+            lat = float(local.latitude)
+            lon = float(local.longitude)
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
             <b>{local.nome}</b><br>
             Endereço: {local.endereco}<br>
             Região: {local.regiao}<br>
-            Lat: {local.latitude}, Lon: {local.longitude}
+            Lat: {lat}, Lon: {lon}
+            {link_rota_html(lat, lon, map_name, local.nome)}
             """
             folium.Marker(
-                location=[local.latitude, local.longitude],
+                location=[lat, lon],
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
@@ -851,7 +1075,7 @@ def mapa_locais():
         mapa.get_root().html.add_child(
             folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
         )
-        return mapa._repr_html_()
+        return mapa.get_root().render()
     finally:
         db.close()
 
@@ -879,12 +1103,33 @@ def mapa_eventos():
 
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        map_name = mapa.get_name()
+        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
+        bounds_por_regional: dict[str, dict[str, float]] = {}
 
         eventos_mostrados = 0
         for evento in eventos:
             if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
                 continue
+            lat = float(evento.local.latitude)
+            lon = float(evento.local.longitude)
+            regional = evento.local.regiao or "Sem regional"
+
+            limites = bounds_por_regional.get(regional)
+            if not limites:
+                bounds_por_regional[regional] = {
+                    "min_lat": lat,
+                    "max_lat": lat,
+                    "min_lon": lon,
+                    "max_lon": lon,
+                }
+            else:
+                limites["min_lat"] = min(limites["min_lat"], lat)
+                limites["max_lat"] = max(limites["max_lat"], lat)
+                limites["min_lon"] = min(limites["min_lon"], lon)
+                limites["max_lon"] = max(limites["max_lon"], lon)
+
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
@@ -894,9 +1139,10 @@ def mapa_eventos():
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
             Local: {evento.local.nome}
+            {link_rota_html(lat, lon, map_name, evento.local.nome)}
             """
             folium.Marker(
-                location=[evento.local.latitude, evento.local.longitude],
+                location=[lat, lon],
                 popup=popup_text,
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
@@ -905,9 +1151,16 @@ def mapa_eventos():
 
         cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
         mapa.get_root().html.add_child(
-            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+            folium.Element(
+                legenda_mapa_html_interativa(
+                    regionais=regionais,
+                    cabecalho=cabecalho_legenda,
+                    map_name=map_name,
+                    bounds_por_regional=bounds_por_regional,
+                )
+            )
         )
-        return mapa._repr_html_()
+        return mapa.get_root().render()
     finally:
         db.close()
 
@@ -956,9 +1209,9 @@ def calendario_eventos():
         <title>Calendário de Eventos BH</title>
         <style>
             body { font-family: Arial, sans-serif; }
-            .header { display: flex; align-items: center; gap: 20px; margin: 20px; }
+            .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
-            .header h1 { margin: 0; }
+            .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
@@ -994,14 +1247,17 @@ def calendario_eventos():
         cor_regiao = cores.get(local.regiao, "gray")
         acessibilidade_html = ""
         proximo_metro_html = ""
+        restaurantes_html = ""
         if bool(local.acessibilidade):
             acessibilidade_html = '<span class="infra-tag" title="Acessibilidade disponível">♿ Acessível</span>'
         if bool(local.proximo_metro):
             proximo_metro_html = '<span class="infra-tag" title="Próximo ao metrô">🚇 Metrô próximo</span>'
+        if bool(local.restaurantes):
+            restaurantes_html = '<span class="infra-tag" title="Possui restaurantes no local">🍽️ Restaurantes</span>'
 
         infra_local_html = ""
-        if acessibilidade_html or proximo_metro_html:
-            infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}</div>'
+        if acessibilidade_html or proximo_metro_html or restaurantes_html:
+            infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}{restaurantes_html}</div>'
 
         html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{infra_local_html}</td>"
         
