@@ -18,6 +18,15 @@ import json
 import os
 from pathlib import Path
 
+
+
+#para executar 
+# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
+# python3 mapaCalorEventos/app/main.py
+
+# uvicorn mapaCalorEventos.app.main:app --reload --port 8004
+# .venv/bin/python -m mapaCalorEventos.app.seed
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 ENV_FILE_PATH = BASE_DIR / ".env"
@@ -771,12 +780,6 @@ async def oauth_callback(provider: str, request: Request):
     }
     return RedirectResponse(url="/", status_code=303)
 
-#para executar 
-# cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
-# python3 mapaCalorEventos/app/main.py
-
-# uvicorn mapaCalorEventos.app.main:app --reload --port 8001
-# .venv/bin/python -m mapaCalorEventos.app.seed
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
