@@ -111,25 +111,72 @@ def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional
 def recursos_rota_mapa_html(map_name: str) -> str:
     map_name_json = json.dumps(map_name)
     return f'''
+    <style>
+        .leaflet-control-clear-route button {{
+            background: #b91c1c;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }}
+        .leaflet-control-clear-route button:hover {{
+            background: #991b1b;
+        }}
+    </style>
     <script>
         window.routeLayer_{map_name} = null;
         window.routeOriginMarker_{map_name} = null;
         window.routeDestinationMarker_{map_name} = null;
         window.selectedOrigin_{map_name} = null;
 
-        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+        function limparRotaMapa_{map_name}() {{
             const mapa = window[{map_name_json}];
             if (!mapa) return;
 
             if (window.routeLayer_{map_name}) {{
                 mapa.removeLayer(window.routeLayer_{map_name});
+                window.routeLayer_{map_name} = null;
             }}
             if (window.routeOriginMarker_{map_name}) {{
                 mapa.removeLayer(window.routeOriginMarker_{map_name});
+                window.routeOriginMarker_{map_name} = null;
             }}
             if (window.routeDestinationMarker_{map_name}) {{
                 mapa.removeLayer(window.routeDestinationMarker_{map_name});
+                window.routeDestinationMarker_{map_name} = null;
             }}
+        }}
+
+        function adicionarControleLimparRota_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.clearRouteControl_{map_name}) return;
+
+            const ClearControl = L.Control.extend({{
+                options: {{ position: 'topright' }},
+                onAdd: function() {{
+                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-clear-route');
+                    const button = L.DomUtil.create('button', '', container);
+                    button.type = 'button';
+                    button.innerText = 'Limpar rota';
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.on(button, 'click', function() {{
+                        limparRotaMapa_{map_name}();
+                    }});
+                    return container;
+                }}
+            }});
+
+            window.clearRouteControl_{map_name} = new ClearControl();
+            mapa.addControl(window.clearRouteControl_{map_name});
+        }}
+
+        async function desenharRota_{map_name}(origLat, origLon, destLat, destLon, origemNome, destinoNome) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+            limparRotaMapa_{map_name}();
 
             window.routeOriginMarker_{map_name} = L.marker([origLat, origLon])
                 .addTo(mapa)
@@ -216,6 +263,8 @@ def recursos_rota_mapa_html(map_name: str) -> str:
                 {{ enableHighAccuracy: true, timeout: 10000 }}
             );
         }}
+
+        setTimeout(adicionarControleLimparRota_{map_name}, 0);
     </script>
     '''
 
