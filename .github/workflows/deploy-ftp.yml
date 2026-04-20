@@ -27,7 +27,7 @@ jobs:
           password: Loi159357216132
           port: 21
           protocol: ftp
-          server-dir: ./htdocs/
+          server-dir: ./eventosbh.page.gd/htdocs
           dangerous-clean-slate: false
           exclude: |
             **/.git*/**
