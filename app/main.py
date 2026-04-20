@@ -27,6 +27,14 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 Base.metadata.create_all(bind=engine)
 
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo"]
+
+
+def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
+    if tipo_evento in TIPOS_EVENTO:
+        return tipo_evento
+    return "Negócios"
+
 
 def garantir_colunas_locais():
     with engine.begin() as conn:
@@ -51,9 +59,39 @@ def garantir_colunas_locais():
                     "ALTER TABLE locais ADD COLUMN restaurantes INTEGER NOT NULL DEFAULT 1"
                 )
             )
+        if "tipo_evento" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE locais ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE locais SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
+            )
+        )
+
+
+def garantir_colunas_eventos():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(eventos)"))
+        }
+        if "tipo_evento" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE eventos ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE eventos SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
+            )
+        )
 
 
 garantir_colunas_locais()
+garantir_colunas_eventos()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -712,6 +750,7 @@ def render_tela_cadastro_manutencao(
                 (Local.nome.ilike(termo_local))
                 | (Local.endereco.ilike(termo_local))
                 | (Local.regiao.ilike(termo_local))
+                | (Local.tipo_evento.ilike(termo_local))
             )
         total_locais = query_locais.count()
         total_paginas_local = max(1, (total_locais + por_pagina - 1) // por_pagina)
@@ -731,6 +770,7 @@ def render_tela_cadastro_manutencao(
                 (Evento.nome.ilike(termo_evento))
                 | (Evento.descricao.ilike(termo_evento))
                 | (Evento.porte.ilike(termo_evento))
+                | (Evento.tipo_evento.ilike(termo_evento))
                 | (Local.nome.ilike(termo_evento))
             )
         total_eventos = query_eventos.count()
@@ -775,12 +815,13 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_tipo_evento = normalizar_tipo_evento(local.tipo_evento)
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
             local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             locais_existentes_html += f"""
             <div class="item-row">
-                <div class="item-name">{local_nome}</div>
+                <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small></div>
                 <div class="item-actions">
                     <button class="btn-secondary" type="button" onclick="openModal('local-modal-{local.id}')">Editar</button>
                     <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
@@ -801,6 +842,11 @@ def render_tela_cadastro_manutencao(
                         <label>Região</label>
                         <select name="regiao" required>
                             {"".join([f'<option value="{r.nome}" {"selected" if r.nome == local_regiao else ""}>{r.nome}</option>' for r in regionais])}
+                        </select>
+
+                        <label>Tipo de evento</label>
+                        <select name="tipo_evento" required>
+                            {"".join([f'<option value="{tipo}" {"selected" if tipo == local_tipo_evento else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
                         </select>
 
                         <label>Latitude</label>
@@ -838,6 +884,7 @@ def render_tela_cadastro_manutencao(
             evento_nome = escape(evento.nome or "")
             evento_descricao = escape(evento.descricao or "")
             evento_porte = escape(evento.porte or "")
+            evento_tipo_evento = normalizar_tipo_evento(evento.tipo_evento)
             evento_options = "".join(
                 [
                     f'<option value="{local.id}" {"selected" if local.id == evento.local_id else ""}>{local.nome} ({local.regiao})</option>'
@@ -846,7 +893,7 @@ def render_tela_cadastro_manutencao(
             )
             eventos_existentes_html += f"""
             <div class="item-row">
-                <div class="item-name">{evento_nome}</div>
+                <div class="item-name">{evento_nome} <small>({escape(evento_tipo_evento)})</small></div>
                 <div class="item-actions">
                     <button class="btn-secondary" type="button" onclick="openModal('evento-modal-{evento.id}')">Editar</button>
                     <form method="post" action="/cadastro/evento/{evento.id}/excluir" onsubmit="return confirm('Excluir evento?');">
@@ -875,6 +922,11 @@ def render_tela_cadastro_manutencao(
 
                         <label>Porte</label>
                         <input name="porte" value="{evento_porte}" required />
+
+                        <label>Tipo de evento</label>
+                        <select name="tipo_evento" required>
+                            {"".join([f'<option value="{tipo}" {"selected" if tipo == evento_tipo_evento else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
+                        </select>
 
                         <label>Local de execução</label>
                         <select name="local_id" required>
@@ -946,11 +998,11 @@ def render_tela_cadastro_manutencao(
                 <form method="get" action="/manutencao" class="grid">
                     <div>
                         <label>Buscar locais</label>
-                        <input name="busca_local" value="{busca_local}" placeholder="Nome, endereço ou região" />
+                        <input name="busca_local" value="{busca_local}" placeholder="Nome, endereço, região ou tipo" />
                     </div>
                     <div>
                         <label>Buscar eventos</label>
-                        <input name="busca_evento" value="{busca_evento}" placeholder="Nome, descrição, porte ou local" />
+                        <input name="busca_evento" value="{busca_evento}" placeholder="Nome, descrição, porte, tipo ou local" />
                     </div>
                     <div>
                         <button type="submit">Aplicar filtros</button>
@@ -986,6 +1038,11 @@ def render_tela_cadastro_manutencao(
                             <label>Região</label>
                             <select name="regiao" required>
                                 {"".join([f'<option value="{r.nome}">{r.nome}</option>' for r in regionais])}
+                            </select>
+
+                            <label>Tipo de evento</label>
+                            <select name="tipo_evento" required>
+                                {"".join([f'<option value="{tipo}" {"selected" if tipo == "Negócios" else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
                             </select>
 
                             <label>Latitude</label>
@@ -1033,6 +1090,11 @@ def render_tela_cadastro_manutencao(
 
                             <label>Porte do evento</label>
                             <input name="porte" placeholder="Pequeno, Médio, Grande..." required />
+
+                            <label>Tipo de evento</label>
+                            <select name="tipo_evento" required>
+                                {"".join([f'<option value="{tipo}" {"selected" if tipo == "Negócios" else ""}>{tipo}</option>' for tipo in TIPOS_EVENTO])}
+                            </select>
 
                             <label>Local de execução</label>
                             <select name="local_id" required>
@@ -1187,7 +1249,7 @@ def cadastrar_local(
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
-    # --- guard ---
+    tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
@@ -1204,6 +1266,7 @@ def cadastrar_local(
             nome=nome,
             endereco=endereco,
             regiao=regiao,
+            tipo_evento=normalizar_tipo_evento(tipo_evento),
             latitude=latitude,
             longitude=longitude,
             acessibilidade=bool(acessibilidade),
@@ -1226,6 +1289,7 @@ def cadastrar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
     redirect = _redirect_se_nao_admin(request)
@@ -1254,6 +1318,7 @@ def cadastrar_evento(
             data_fim=data_fim_dt,
             publico_estimado=publico_estimado,
             porte=porte,
+            tipo_evento=normalizar_tipo_evento(tipo_evento),
             local_id=local_id,
         )
         db.add(evento)
@@ -1270,6 +1335,7 @@ def editar_local(
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
     acessibilidade: Optional[str] = Form(None),
@@ -1289,6 +1355,7 @@ def editar_local(
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
+        local.tipo_evento = normalizar_tipo_evento(tipo_evento)
         local.latitude = latitude
         local.longitude = longitude
         local.acessibilidade = bool(acessibilidade)
@@ -1330,6 +1397,7 @@ def editar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
     redirect = _redirect_se_nao_admin(request)
@@ -1361,6 +1429,7 @@ def editar_evento(
         evento.data_fim = data_fim_dt
         evento.publico_estimado = publico_estimado
         evento.porte = porte
+        evento.tipo_evento = normalizar_tipo_evento(tipo_evento)
         evento.local_id = local_id
         db.commit()
         return RedirectResponse(url="/manutencao?msg=evento_edit_ok", status_code=303)
@@ -1502,6 +1571,7 @@ def mapa_eventos(request: Request):
             Data: {evento.data_inicio} a {evento.data_fim}<br>
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
+            Tipo: {evento.tipo_evento}<br>
             Local: {evento.local.nome}
             {link_rota_html(lat, lon, map_name, evento.local.nome)}
             """
@@ -1530,14 +1600,21 @@ def mapa_eventos(request: Request):
 
 
 @app.get("/calendario", response_class=HTMLResponse)
-def calendario_eventos(request: Request):
+def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     redirect = _redirect_se_nao_autenticado(request)
     if redirect:
         return redirect
 
     db: Session = SessionLocal()
     locais = db.query(Local).all()
-    eventos = db.query(Evento).join(Local).all()
+    tipo_evento_selecionado = "Todos"
+    if tipo_evento in TIPOS_EVENTO:
+        tipo_evento_selecionado = tipo_evento
+
+    query_eventos = db.query(Evento).join(Local)
+    if tipo_evento_selecionado != "Todos":
+        query_eventos = query_eventos.filter(Evento.tipo_evento == tipo_evento_selecionado)
+    eventos = query_eventos.all()
     regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
     # Encontrar todos os meses com eventos
@@ -1580,6 +1657,11 @@ def calendario_eventos(request: Request):
             .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
             .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
+            .filtro-wrap { margin: 10px 20px 0 20px; display: flex; align-items: center; gap: 10px; }
+            .filtro-wrap label { font-weight: bold; }
+            .filtro-wrap select { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; min-width: 170px; }
+            .filtro-wrap button { padding: 8px 14px; border-radius: 6px; border: none; background: #1f2937; color: #fff; font-weight: 600; cursor: pointer; }
+            .filtro-wrap button:hover { background: #111827; }
             .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
@@ -1595,6 +1677,13 @@ def calendario_eventos(request: Request):
             <img class="logo" src="https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg" alt="Logo BH">
             <h1>Calendário de Eventos de Belo Horizonte</h1>
         </div>
+        <form class="filtro-wrap" method="get" action="/calendario">
+            <label for="tipo_evento">Tipo de evento:</label>
+            <select name="tipo_evento" id="tipo_evento">
+                {opcoes_tipo_evento_html}
+            </select>
+            <button type="submit">Filtrar</button>
+        </form>
         <div class="legenda">
             {legendas_html}
         </div>
@@ -1603,6 +1692,12 @@ def calendario_eventos(request: Request):
                 <th>Local</th>
     """
     html = html.replace("{legendas_html}", legendas_html)
+
+    opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
+    for tipo in TIPOS_EVENTO:
+        selected = " selected" if tipo == tipo_evento_selecionado else ""
+        opcoes_tipo_evento_html += f'<option value="{tipo}"{selected}>{tipo}</option>'
+    html = html.replace("{opcoes_tipo_evento_html}", opcoes_tipo_evento_html)
 
     # Cabeçalhos dos meses
     for ano_mes, mes in meses_ordenados:
@@ -1613,6 +1708,7 @@ def calendario_eventos(request: Request):
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
+        tipo_local_html = f'<div class="infra-icons"><span class="infra-tag" title="Tipo principal do local">🏷️ {escape(normalizar_tipo_evento(local.tipo_evento))}</span></div>'
         acessibilidade_html = ""
         proximo_metro_html = ""
         restaurantes_html = ""
@@ -1627,7 +1723,7 @@ def calendario_eventos(request: Request):
         if acessibilidade_html or proximo_metro_html or restaurantes_html:
             infra_local_html = f'<div class="infra-icons">{acessibilidade_html}{proximo_metro_html}{restaurantes_html}</div>'
 
-        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{infra_local_html}</td>"
+        html += f"<tr><td style='background-color: {cor_regiao}; color: white; vertical-align: top;'><b>{local.nome}</b><br><small>({local.regiao})</small>{tipo_local_html}{infra_local_html}</td>"
         
         for ano_mes, mes in meses_ordenados:
             # Obter todos os eventos deste mês para este local
