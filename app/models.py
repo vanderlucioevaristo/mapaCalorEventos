@@ -51,6 +51,7 @@ class Anunciante(Base):
     endereco = Column(String)
     latitude = Column(Float)
     longitude = Column(Float)
+    tipo = Column(String, default="", nullable=False)
     urlimagem = Column(String)
     datainicio = Column(Date)
     datafim = Column(Date)
