@@ -24,6 +24,7 @@ from pathlib import Path
 
 #  python3 -m uvicorn mapaCalorEventos.app.main:app --port 8004
 #  python3 -m mapaCalorEventos.app.seed
+#. lsof -i :8004 | grep -v COMMAND | awk '{print $2}' | xargs kill -9
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
@@ -144,10 +145,24 @@ def coordenadas_validas(latitude, longitude) -> bool:
     return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
-def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional") -> str:
+def legenda_mapa_html(
+    regionais: list[str],
+    cabecalho: str = "Legenda - Regional",
+    contagem_por_regional: dict[str, int] = None,
+    exibir_contagem: bool = True,
+) -> str:
+    if contagem_por_regional is None:
+        contagem_por_regional = {}
+
+    def _rotulo_regional(regional: str) -> str:
+        nome = escape(regional)
+        if not exibir_contagem:
+            return nome
+        return f"{nome} ({contagem_por_regional.get(regional, 0)})"
+
     itens = "".join(
         [
-            f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {escape(regional)}<br>'
+            f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {_rotulo_regional(regional)}<br>'
             for regional in regionais
         ]
     )
@@ -356,23 +371,32 @@ def legenda_mapa_html_interativa(
     cabecalho: str,
     map_name: str,
     bounds_por_regional: dict[str, dict[str, float]],
+    contagem_por_regional: dict[str, int] = None,
+    exibir_contagem: bool = True,
 ) -> str:
     map_name_json = json.dumps(map_name)
+    if contagem_por_regional is None:
+        contagem_por_regional = {}
     itens = []
     for regional in regionais:
         estilo_ponto = (
             f'background: {cor_regional(regional)}; width: 10px; height: 10px; '
             'display: inline-block; margin-right: 6px;'
         )
+        contagem = contagem_por_regional.get(regional, 0)
+        if exibir_contagem:
+            rotulo_regional = f"{escape(regional)} ({contagem})"
+        else:
+            rotulo_regional = escape(regional)
         if regional in bounds_por_regional:
             itens.append(
                 f'<button type="button" class="legend-link" '
                 f'onclick="zoomParaRegional_{map_name}({json.dumps(regional)})">'
-                f'<i style="{estilo_ponto}"></i>{escape(regional)}</button>'
+                f'<i style="{estilo_ponto}"></i>{rotulo_regional}</button>'
             )
         else:
             itens.append(
-                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{escape(regional)}</span>'
+                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{rotulo_regional}</span>'
             )
 
     bounds_json = json.dumps(bounds_por_regional)
@@ -495,6 +519,8 @@ EMAILS_ADMIN = {
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
+EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
+EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
 LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
@@ -561,6 +587,8 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
         return redirect
 
     exibir_logo_checked = "checked" if EXIBIR_LOGO else ""
+    exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
+    exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     logo_url_valor = escape(LOGO_URL or "")
     msg_html = ""
     if msg == "ok":
@@ -593,12 +621,22 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     <body>
         <div class="page">
             <h1>Configurações Visuais</h1>
-            <div class="desc">Altere os parâmetros globais de exibição de logo do sistema.</div>
+            <div class="desc">Altere os parâmetros globais de exibição do sistema.</div>
             {msg_html}
             <form method="post" action="/configuracoes">
                 <label class="check">
                     <input type="checkbox" name="exibir_logo" value="1" {exibir_logo_checked} />
                     Exibir logo nas páginas que usam essa configuração
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_contagem_locais_mapa" value="1" {exibir_contagem_locais_checked} />
+                    Exibir contagem por regional no mapa de locais
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_contagem_eventos_mapa" value="1" {exibir_contagem_eventos_checked} />
+                    Exibir contagem por regional no mapa de eventos
                 </label>
 
                 <label for="logo_url">URL do logo</label>
@@ -619,22 +657,36 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 def salvar_configuracoes(
     request: Request,
     exibir_logo: Optional[str] = Form(None),
+    exibir_contagem_locais_mapa: Optional[str] = Form(None),
+    exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     logo_url: str = Form(""),
 ):
     redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
-    global EXIBIR_LOGO, LOGO_URL
+    global EXIBIR_LOGO, LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA
 
     try:
         novo_exibir_logo = bool(exibir_logo)
+        novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
+        novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         nova_logo_url = (logo_url or "").strip()
 
         _atualizar_variavel_env("EXIBIR_LOGO", "true" if novo_exibir_logo else "false")
+        _atualizar_variavel_env(
+            "EXIBIR_CONTAGEM_LOCAIS_MAPA",
+            "true" if novo_exibir_contagem_locais_mapa else "false",
+        )
+        _atualizar_variavel_env(
+            "EXIBIR_CONTAGEM_EVENTOS_MAPA",
+            "true" if novo_exibir_contagem_eventos_mapa else "false",
+        )
         _atualizar_variavel_env("LOGO_URL", nova_logo_url)
 
         EXIBIR_LOGO = novo_exibir_logo
+        EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
+        EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         LOGO_URL = nova_logo_url
         return RedirectResponse(url="/configuracoes?msg=ok", status_code=303)
     except Exception:
@@ -1601,11 +1653,20 @@ def mapa_locais(request: Request):
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
+        locais_mostrados = 0
+        contagem_por_regional = {}
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
                 continue
             lat = float(local.latitude)
             lon = float(local.longitude)
+            regional = local.regiao or "Sem regional"
+
+            # Contar locais por regional
+            if regional not in contagem_por_regional:
+                contagem_por_regional[regional] = 0
+            contagem_por_regional[regional] += 1
+
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
@@ -1621,10 +1682,29 @@ def mapa_locais(request: Request):
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
             ).add_to(mapa)
+            locais_mostrados += 1
 
-        cabecalho_legenda = f"Legenda - Regional ({len(locais)} locais)"
+        # Adicionar "Sem regional" à lista se houver locais sem regional
+        if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
+            regionais.append("Sem regional")
+
+        # Filtrar apenas regionais que têm locais e incluir regionais presentes
+        # nos dados mas ausentes na tabela de regionais.
+        regionais_com_locais = [r for r in regionais if r in contagem_por_regional]
+        for regional in sorted(contagem_por_regional.keys()):
+            if regional not in regionais_com_locais:
+                regionais_com_locais.append(regional)
+
+        cabecalho_legenda = f"Legenda - Regional ({locais_mostrados} locais)"
         mapa.get_root().html.add_child(
-            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+            folium.Element(
+                legenda_mapa_html(
+                    regionais_com_locais,
+                    cabecalho_legenda,
+                    contagem_por_regional,
+                    exibir_contagem=EXIBIR_CONTAGEM_LOCAIS_MAPA,
+                )
+            )
         )
         return mapa.get_root().render()
     finally:
@@ -1673,12 +1753,18 @@ def mapa_eventos(request: Request):
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
         eventos_mostrados = 0
+        contagem_por_regional = {}
         for evento in eventos:
             if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
                 continue
             lat = float(evento.local.latitude)
             lon = float(evento.local.longitude)
             regional = evento.local.regiao or "Sem regional"
+
+            # Contar eventos por regional
+            if regional not in contagem_por_regional:
+                contagem_por_regional[regional] = 0
+            contagem_por_regional[regional] += 1
 
             limites = bounds_por_regional.get(regional)
             if not limites:
@@ -1714,14 +1800,27 @@ def mapa_eventos(request: Request):
             ).add_to(cluster_eventos)
             eventos_mostrados += 1
 
+        # Adicionar "Sem regional" à lista se houver eventos sem regional
+        if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
+            regionais.append("Sem regional")
+
+        # Filtrar apenas regionais que têm eventos e incluir regionais presentes
+        # nos dados mas ausentes na tabela de regionais.
+        regionais_com_eventos = [r for r in regionais if r in contagem_por_regional]
+        for regional in sorted(contagem_por_regional.keys()):
+            if regional not in regionais_com_eventos:
+                regionais_com_eventos.append(regional)
+
         cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
         mapa.get_root().html.add_child(
             folium.Element(
                 legenda_mapa_html_interativa(
-                    regionais=regionais,
+                    regionais=regionais_com_eventos,
                     cabecalho=cabecalho_legenda,
                     map_name=map_name,
                     bounds_por_regional=bounds_por_regional,
+                    contagem_por_regional=contagem_por_regional,
+                    exibir_contagem=EXIBIR_CONTAGEM_EVENTOS_MAPA,
                 )
             )
         )
