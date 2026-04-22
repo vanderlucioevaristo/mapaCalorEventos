@@ -392,12 +392,68 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         .leaflet-control-clear-route button:hover {{
             background: #991b1b;
         }}
+        .leaflet-control-route-distance {{
+            background: #ffffff;
+            border: 2px solid #1d4ed8;
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 145px;
+        }}
     </style>
     <script>
         window.routeLayer_{map_name} = null;
         window.routeOriginMarker_{map_name} = null;
         window.routeDestinationMarker_{map_name} = null;
         window.selectedOrigin_{map_name} = null;
+        window.routeDistanceControl_{map_name} = null;
+        window.routeDistanceContainer_{map_name} = null;
+
+        function formatarDistancia_{map_name}(metros) {{
+            if (!Number.isFinite(metros)) return '--';
+            if (metros < 1000) return `${{Math.round(metros)}} m`;
+            return `${{(metros / 1000).toFixed(2)}} km`;
+        }}
+
+        function formatarDuracao_{map_name}(segundos) {{
+            if (!Number.isFinite(segundos) || segundos <= 0) return '--';
+            const totalMin = Math.round(segundos / 60);
+            if (totalMin < 60) return `${{totalMin}} min`;
+            const horas = Math.floor(totalMin / 60);
+            const minutos = totalMin % 60;
+            if (minutos === 0) return `${{horas}} h`;
+            return `${{horas}} h ${{minutos}} min`;
+        }}
+
+        function mostrarResumoRota_{map_name}(metros, segundos) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (!window.routeDistanceControl_{map_name}) {{
+                const RouteDistanceControl = L.Control.extend({{
+                    options: {{ position: 'topright' }},
+                    onAdd: function() {{
+                        const container = L.DomUtil.create('div', 'leaflet-control-route-distance');
+                        container.style.display = 'none';
+                        L.DomEvent.disableClickPropagation(container);
+                        window.routeDistanceContainer_{map_name} = container;
+                        return container;
+                    }}
+                }});
+
+                window.routeDistanceControl_{map_name} = new RouteDistanceControl();
+                mapa.addControl(window.routeDistanceControl_{map_name});
+            }}
+
+            if (window.routeDistanceContainer_{map_name}) {{
+                window.routeDistanceContainer_{map_name}.innerHTML =
+                    `Distância: <b>${{formatarDistancia_{map_name}(metros)}}</b><br>Tempo estimado: <b>${{formatarDuracao_{map_name}(segundos)}}</b>`;
+                window.routeDistanceContainer_{map_name}.style.display = 'block';
+            }}
+        }}
 
         function limparRotaMapa_{map_name}() {{
             const mapa = window[{map_name_json}];
@@ -414,6 +470,10 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             if (window.routeDestinationMarker_{map_name}) {{
                 mapa.removeLayer(window.routeDestinationMarker_{map_name});
                 window.routeDestinationMarker_{map_name} = null;
+            }}
+            if (window.routeDistanceContainer_{map_name}) {{
+                window.routeDistanceContainer_{map_name}.style.display = 'none';
+                window.routeDistanceContainer_{map_name}.innerHTML = '';
             }}
         }}
 
@@ -465,12 +525,22 @@ def recursos_rota_mapa_html(map_name: str) -> str:
                 const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
                     return [coord[1], coord[0]];
                 }});
+                const distanciaMetros = Number(data.routes[0].distance || 0);
+                const duracaoSegundos = Number(data.routes[0].duration || 0);
 
                 window.routeLayer_{map_name} = L.polyline(coordinates, {{
                     color: '#2563eb',
                     weight: 5,
                     opacity: 0.85
                 }}).addTo(mapa);
+
+                if (Number.isFinite(distanciaMetros) && distanciaMetros > 0) {{
+                    window.routeLayer_{map_name}.bindPopup(
+                        `Distância da rota: <b>${{formatarDistancia_{map_name}(distanciaMetros)}}</b><br>Tempo estimado: <b>${{formatarDuracao_{map_name}(duracaoSegundos)}}</b>`
+                    );
+                }}
+
+                mostrarResumoRota_{map_name}(distanciaMetros, duracaoSegundos);
 
                 mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
             }} catch (error) {{
