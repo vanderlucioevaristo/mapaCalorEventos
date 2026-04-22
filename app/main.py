@@ -22,8 +22,8 @@ from pathlib import Path
 # cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
 # python3 mapaCalorEventos/app/main.py
 
-# uvicorn mapaCalorEventos.app.main:app --reload --port 8004
-# .venv/bin/python -m mapaCalorEventos.app.seed
+#  python3 -m uvicorn mapaCalorEventos.app.main:app --port 8004
+#  python3 -m mapaCalorEventos.app.seed
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
