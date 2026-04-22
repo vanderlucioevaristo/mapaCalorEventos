@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional
+from .models import Evento, Local, Regional, Anunciante
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -99,8 +99,20 @@ def garantir_colunas_eventos():
         )
 
 
+def garantir_colunas_anunciantes():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(anunciantes)"))
+        }
+        if "datainicio" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datainicio DATE"))
+        if "datafim" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datafim DATE"))
+
+
 garantir_colunas_locais()
 garantir_colunas_eventos()
+garantir_colunas_anunciantes()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -887,6 +899,7 @@ def home(request: Request):
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
+                {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
@@ -1633,6 +1646,365 @@ def excluir_evento(request: Request, evento_id: int):
         db.delete(evento)
         db.commit()
         return RedirectResponse(url="/manutencao?msg=evento_delete_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/anunciante")
+def cadastrar_anunciante(
+    request: Request,
+    nome: str = Form(...),
+    endereco: str = Form(""),
+    latitude: float = Form(0.0),
+    longitude: float = Form(0.0),
+    urlimagem: str = Form(""),
+    datainicio: str = Form(""),
+    datafim: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        data_inicio_dt = None
+        data_fim_dt = None
+        if datainicio:
+            try:
+                data_inicio_dt = datetime.strptime(datainicio, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+        if datafim:
+            try:
+                data_fim_dt = datetime.strptime(datafim, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+
+        if data_inicio_dt and data_fim_dt and data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
+
+        anunciante = Anunciante(
+            nome=nome,
+            endereco=endereco,
+            latitude=latitude,
+            longitude=longitude,
+            urlimagem=urlimagem,
+            datainicio=data_inicio_dt,
+            datafim=data_fim_dt,
+        )
+        db.add(anunciante)
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/anunciante/{anunciante_id}/editar")
+def editar_anunciante(
+    request: Request,
+    anunciante_id: int,
+    nome: str = Form(...),
+    endereco: str = Form(""),
+    latitude: float = Form(0.0),
+    longitude: float = Form(0.0),
+    urlimagem: str = Form(""),
+    datainicio: str = Form(""),
+    datafim: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciante = db.query(Anunciante).filter(Anunciante.id == anunciante_id).first()
+        if not anunciante:
+            return RedirectResponse(url="/anunciantes?msg=nao_encontrado", status_code=303)
+
+        data_inicio_dt = None
+        data_fim_dt = None
+        if datainicio:
+            try:
+                data_inicio_dt = datetime.strptime(datainicio, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+        if datafim:
+            try:
+                data_fim_dt = datetime.strptime(datafim, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+
+        if data_inicio_dt and data_fim_dt and data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
+
+        anunciante.nome = nome
+        anunciante.endereco = endereco
+        anunciante.latitude = latitude
+        anunciante.longitude = longitude
+        anunciante.urlimagem = urlimagem
+        anunciante.datainicio = data_inicio_dt
+        anunciante.datafim = data_fim_dt
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=edit_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/anunciante/{anunciante_id}/excluir")
+def excluir_anunciante(request: Request, anunciante_id: int):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciante = db.query(Anunciante).filter(Anunciante.id == anunciante_id).first()
+        if not anunciante:
+            return RedirectResponse(url="/anunciantes?msg=nao_encontrado", status_code=303)
+
+        db.delete(anunciante)
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=delete_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/anunciantes", response_class=HTMLResponse)
+def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciantes = db.query(Anunciante).order_by(Anunciante.nome).all()
+
+        msg_html = ""
+        if msg == "ok":
+            msg_html = '<div class="msg ok">Anunciante cadastrado com sucesso.</div>'
+        elif msg == "edit_ok":
+            msg_html = '<div class="msg ok">Anunciante atualizado com sucesso.</div>'
+        elif msg == "delete_ok":
+            msg_html = '<div class="msg ok">Anunciante excluído com sucesso.</div>'
+        elif msg == "nao_encontrado":
+            msg_html = '<div class="msg erro">Anunciante não encontrado.</div>'
+        elif msg == "data_invalida":
+            msg_html = '<div class="msg erro">Data inválida. Use o formato correto da tela.</div>'
+        elif msg == "periodo_invalido":
+            msg_html = '<div class="msg erro">A data fim não pode ser menor que a data início.</div>'
+
+        anunciantes_html = ""
+        for anunciante in anunciantes:
+            anunciante_id = anunciante.id
+            anunciante_nome = escape(anunciante.nome or "")
+            anunciante_endereco = escape(anunciante.endereco or "")
+            anunciante_latitude = anunciante.latitude or 0.0
+            anunciante_longitude = anunciante.longitude or 0.0
+            anunciante_urlimagem = escape(anunciante.urlimagem or "")
+            anunciante_datainicio = anunciante.datainicio.isoformat() if anunciante.datainicio else ""
+            anunciante_datafim = anunciante.datafim.isoformat() if anunciante.datafim else ""
+
+            anunciantes_html += f"""
+            <tr>
+                <td>{anunciante_id}</td>
+                <td>{anunciante_nome}</td>
+                <td>{anunciante_endereco}</td>
+                <td>{anunciante_latitude}</td>
+                <td>{anunciante_longitude}</td>
+                <td>{anunciante_datainicio}</td>
+                <td>{anunciante_datafim}</td>
+                <td><a href="{anunciante_urlimagem}" target="_blank">Ver</a></td>
+                <td>
+                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
+                    <form method="post" action="/cadastro/anunciante/{anunciante_id}/excluir" style="display:inline;">
+                        <button type="submit" onclick="return confirm('Tem certeza?')">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            """
+
+        return f"""
+        <html>
+        <head>
+            <title>Gerenciar Anunciantes</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+                .page {{ max-width: 1000px; margin: 0 auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+                h1 {{ margin-top: 0; color: #1f2937; }}
+                .msg {{ border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }}
+                .ok {{ background: #dcfce7; color: #166534; }}
+                .erro {{ background: #fee2e2; color: #991b1b; }}
+                .btn {{ background: #1f2937; color: white; border: none; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 700; }}
+                .btn:hover {{ background: #111827; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }}
+                th {{ background: #f3f4f6; font-weight: 700; color: #111827; }}
+                tr:hover {{ background: #f9fafb; }}
+                .modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.5); z-index: 9999; }}
+                .modal.show {{ display: flex; align-items: center; justify-content: center; }}
+                .modal-content {{ background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 100%; }}
+                .modal-content h2 {{ margin-top: 0; color: #1f2937; }}
+                .form-group {{ margin: 14px 0; }}
+                .form-group label {{ display: block; margin-bottom: 6px; font-weight: 700; color: #111827; }}
+                .form-group input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }}
+                .modal-buttons {{ margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }}
+                .btn-cancel {{ background: #e5e7eb; color: #111827; }}
+                .btn-cancel:hover {{ background: #d1d5db; }}
+                .actions {{ display: flex; gap: 10px; }}
+                a {{ color: #1f2937; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <a href="/" style="text-decoration:none;color:#1f2937;font-weight:700;">← Voltar</a>
+                <h1>Gerenciar Anunciantes</h1>
+                {msg_html}
+                <button class="btn" onclick="openCreateModal()">+ Novo Anunciante</button>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Endereço</th>
+                            <th>Latitude</th>
+                            <th>Longitude</th>
+                            <th>Data Início</th>
+                            <th>Data Fim</th>
+                            <th>Imagem</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {anunciantes_html}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="createModal" class="modal">
+                <div class="modal-content">
+                    <h2>Novo Anunciante</h2>
+                    <form method="post" action="/cadastro/anunciante">
+                        <div class="form-group">
+                            <label for="nome">Nome *</label>
+                            <input id="nome" type="text" name="nome" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="endereco">Endereço</label>
+                            <input id="endereco" type="text" name="endereco" />
+                        </div>
+                        <div class="form-group">
+                            <label for="latitude">Latitude</label>
+                            <input id="latitude" type="number" name="latitude" step="0.000001" value="0.0" />
+                        </div>
+                        <div class="form-group">
+                            <label for="longitude">Longitude</label>
+                            <input id="longitude" type="number" name="longitude" step="0.000001" value="0.0" />
+                        </div>
+                        <div class="form-group">
+                            <label for="urlimagem">URL da Imagem</label>
+                            <input id="urlimagem" type="text" name="urlimagem" />
+                        </div>
+                        <div class="form-group">
+                            <label for="datainicio">Data Início</label>
+                            <input id="datainicio" type="date" name="datainicio" />
+                        </div>
+                        <div class="form-group">
+                            <label for="datafim">Data Fim</label>
+                            <input id="datafim" type="date" name="datafim" />
+                        </div>
+                        <div class="modal-buttons">
+                            <button type="button" class="btn btn-cancel" onclick="closeCreateModal()">Cancelar</button>
+                            <button type="submit" class="btn">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="editModal" class="modal">
+                <div class="modal-content">
+                    <h2>Editar Anunciante</h2>
+                    <form id="editForm" method="post">
+                        <div class="form-group">
+                            <label for="edit_nome">Nome *</label>
+                            <input id="edit_nome" type="text" name="nome" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_endereco">Endereço</label>
+                            <input id="edit_endereco" type="text" name="endereco" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_latitude">Latitude</label>
+                            <input id="edit_latitude" type="number" name="latitude" step="0.000001" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_longitude">Longitude</label>
+                            <input id="edit_longitude" type="number" name="longitude" step="0.000001" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_urlimagem">URL da Imagem</label>
+                            <input id="edit_urlimagem" type="text" name="urlimagem" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_datainicio">Data Início</label>
+                            <input id="edit_datainicio" type="date" name="datainicio" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_datafim">Data Fim</label>
+                            <input id="edit_datafim" type="date" name="datafim" />
+                        </div>
+                        <div class="modal-buttons">
+                            <button type="button" class="btn btn-cancel" onclick="closeEditModal()">Cancelar</button>
+                            <button type="submit" class="btn">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <script>
+                function openCreateModal() {{
+                    document.getElementById('createModal').classList.add('show');
+                }}
+
+                function closeCreateModal() {{
+                    document.getElementById('createModal').classList.remove('show');
+                    document.getElementById('nome').value = '';
+                    document.getElementById('endereco').value = '';
+                    document.getElementById('latitude').value = '0.0';
+                    document.getElementById('longitude').value = '0.0';
+                    document.getElementById('urlimagem').value = '';
+                    document.getElementById('datainicio').value = '';
+                    document.getElementById('datafim').value = '';
+                }}
+
+                function openEditModal(id, nome, endereco, latitude, longitude, urlimagem, datainicio, datafim) {{
+                    document.getElementById('edit_nome').value = nome;
+                    document.getElementById('edit_endereco').value = endereco;
+                    document.getElementById('edit_latitude').value = latitude;
+                    document.getElementById('edit_longitude').value = longitude;
+                    document.getElementById('edit_urlimagem').value = urlimagem;
+                    document.getElementById('edit_datainicio').value = datainicio || '';
+                    document.getElementById('edit_datafim').value = datafim || '';
+                    document.getElementById('editForm').action = `/cadastro/anunciante/${{id}}/editar`;
+                    document.getElementById('editModal').classList.add('show');
+                }}
+
+                function closeEditModal() {{
+                    document.getElementById('editModal').classList.remove('show');
+                }}
+
+                document.getElementById('createModal').addEventListener('click', function(e) {{
+                    if (e.target === this) closeCreateModal();
+                }});
+
+                document.getElementById('editModal').addEventListener('click', function(e) {{
+                    if (e.target === this) closeEditModal();
+                }});
+            </script>
+        </body>
+        </html>
+        """
     finally:
         db.close()
 

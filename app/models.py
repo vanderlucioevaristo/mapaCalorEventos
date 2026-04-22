@@ -41,3 +41,16 @@ class Evento(Base):
     local_id = Column(Integer, ForeignKey("locais.id"))
 
     local = relationship("Local", back_populates="eventos")
+
+
+class Anunciante(Base):
+    __tablename__ = "anunciantes"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, nullable=False)
+    endereco = Column(String)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    urlimagem = Column(String)
+    datainicio = Column(Date)
+    datafim = Column(Date)
