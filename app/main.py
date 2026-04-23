@@ -434,7 +434,7 @@ def recursos_rota_mapa_html(map_name: str) -> str:
 
             if (!window.routeDistanceControl_{map_name}) {{
                 const RouteDistanceControl = L.Control.extend({{
-                    options: {{ position: 'topright' }},
+                    options: {{ position: 'bottomleft' }},
                     onAdd: function() {{
                         const container = L.DomUtil.create('div', 'leaflet-control-route-distance');
                         container.style.display = 'none';
