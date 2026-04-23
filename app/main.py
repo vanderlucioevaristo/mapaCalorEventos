@@ -3,27 +3,29 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional
+from .models import Evento, Local, Regional, Anunciante
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
 import folium
 from folium.plugins import MarkerCluster
 import calendar
-from datetime import datetime
+from datetime import datetime, date
 from html import escape
 from typing import Optional
 import math
 import json
 import os
+import httpx
 from pathlib import Path
 
 #para executar 
 # cd /Users/vanderevaristo/ProjetosVander/mapacaloreventos source .venv/bin/activate uvicorn mapaCalorEventos.app.main:app --reload
 # python3 mapaCalorEventos/app/main.py
 
-# uvicorn mapaCalorEventos.app.main:app --reload --port 8004
-# .venv/bin/python -m mapaCalorEventos.app.seed
+#  python3 -m uvicorn mapaCalorEventos.app.main:app --port 8004
+#  python3 -m mapaCalorEventos.app.seed
+#. lsof -i :8004 | grep -v COMMAND | awk '{print $2}' | xargs kill -9
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
@@ -98,8 +100,25 @@ def garantir_colunas_eventos():
         )
 
 
+def garantir_colunas_anunciantes():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(anunciantes)"))
+        }
+        if "datainicio" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datainicio DATE"))
+        if "datafim" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datafim DATE"))
+        if "tipo" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN tipo TEXT NOT NULL DEFAULT ''"))
+        conn.execute(
+            text("UPDATE anunciantes SET tipo = '' WHERE tipo IS NULL")
+        )
+
+
 garantir_colunas_locais()
 garantir_colunas_eventos()
+garantir_colunas_anunciantes()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -144,10 +163,192 @@ def coordenadas_validas(latitude, longitude) -> bool:
     return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
-def legenda_mapa_html(regionais: list[str], cabecalho: str = "Legenda - Regional") -> str:
+def geocodificar_endereco(endereco: str) -> tuple[Optional[float], Optional[float]]:
+    endereco_limpo = (endereco or "").strip()
+    if not endereco_limpo:
+        return None, None
+
+    consulta = f"{endereco_limpo}, Belo Horizonte, MG, Brasil"
+    url = "https://nominatim.openstreetmap.org/search"
+    headers = {
+        "User-Agent": "mapa-calor-eventos/1.0 (contato: admin@sistema.local)"
+    }
+    params = {
+        "q": consulta,
+        "format": "json",
+        "limit": 1,
+        "addressdetails": 0,
+    }
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            response = client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            resultados = response.json()
+    except Exception:
+        return None, None
+
+    if not resultados:
+        return None, None
+
+    try:
+        latitude = float(resultados[0].get("lat"))
+        longitude = float(resultados[0].get("lon"))
+    except (TypeError, ValueError):
+        return None, None
+
+    if not coordenadas_validas(latitude, longitude):
+        return None, None
+
+    return latitude, longitude
+
+
+def anunciante_ativo_em_data(anunciante: Anunciante, referencia: date) -> bool:
+    if anunciante.datainicio and referencia < anunciante.datainicio:
+        return False
+    if anunciante.datafim and referencia > anunciante.datafim:
+        return False
+    return True
+
+
+def popup_anunciante_html(anunciante: Anunciante, map_name: str) -> str:
+    lat = float(anunciante.latitude)
+    lon = float(anunciante.longitude)
+    tipo_anunciante = (anunciante.tipo or "").strip()
+    tipo_html = (
+        f"Tipo: {escape(tipo_anunciante)}<br>"
+        if tipo_anunciante
+        else "Tipo: Não informado<br>"
+    )
+    periodo = ""
+    if anunciante.datainicio and anunciante.datafim:
+        periodo = f"Ativo: {anunciante.datainicio} a {anunciante.datafim}<br>"
+    elif anunciante.datainicio:
+        periodo = f"Ativo desde: {anunciante.datainicio}<br>"
+    elif anunciante.datafim:
+        periodo = f"Ativo até: {anunciante.datafim}<br>"
+
+    imagem_html = ""
+    if anunciante.urlimagem:
+        imagem_url = escape(anunciante.urlimagem)
+        imagem_html = (
+            f'<br><img src="{imagem_url}" alt="Imagem do anunciante" '
+            'style="max-width:180px; max-height:120px; border-radius:6px; object-fit:cover;">'
+        )
+
+    return (
+        f"<b>Anunciante: {escape(anunciante.nome or '')}</b><br>"
+        f"{tipo_html}"
+        f"Endereço: {escape(anunciante.endereco or '')}<br>"
+        f"{periodo}"
+        f"Lat: {lat}, Lon: {lon}"
+        f"{imagem_html}"
+        f"{link_rota_html(lat, lon, map_name, anunciante.nome or 'Anunciante')}"
+    )
+
+
+def icone_anunciante(anunciante: Anunciante):
+    if anunciante.urlimagem:
+        try:
+            return folium.CustomIcon(
+                icon_image=anunciante.urlimagem,
+                icon_size=(42, 42),
+                icon_anchor=(21, 21),
+                popup_anchor=(0, -18),
+            )
+        except Exception:
+            # Se a URL da imagem estiver inválida, usa ícone padrão.
+            pass
+    return folium.Icon(color="lightgray", icon="bullhorn", prefix="fa")
+
+
+def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -> None:
+    lat = float(anunciante.latitude)
+    lon = float(anunciante.longitude)
+    tipo_anunciante = (anunciante.tipo or "").strip()
+    tooltip_tipo = f" ({tipo_anunciante})" if tipo_anunciante else ""
+
+    # Halo para destacar o anunciante no mapa.
+    folium.CircleMarker(
+        location=[lat, lon],
+        radius=20,
+        color="#166534",
+        weight=3,
+        fill=True,
+        fill_color="#22c55e",
+        fill_opacity=0.45,
+        opacity=1,
+    ).add_to(mapa)
+
+    marcador_html = (
+        '<div style="position:relative;width:40px;height:40px;">'
+        '<style>'
+        '@keyframes pulseAnuncianteVerde {'
+        '0% { transform: scale(0.82); opacity: 0.85; }'
+        '70% { transform: scale(1.35); opacity: 0.08; }'
+        '100% { transform: scale(1.45); opacity: 0; }'
+        '}'
+        '.anunciante-pulse-green {'
+        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+        'width:22px;height:22px;border-radius:50%;'
+        'background:rgba(22,163,74,0.55);'
+        'animation:pulseAnuncianteVerde 1.1s infinite ease-out;'
+        '}'
+        '.anunciante-arrow-green {'
+        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+        'width:22px;height:22px;border-radius:50%;'
+        'background:#22c55e;border:2px solid #14532d;'
+        'display:flex;align-items:center;justify-content:center;'
+        'box-shadow:0 4px 14px rgba(20,83,45,.7);'
+        '}'
+        '</style>'
+        '<div class="anunciante-pulse-green"></div>'
+        '<div class="anunciante-arrow-green">'
+        '<span style="color:#fff;font-size:16px;font-weight:900;line-height:1;">↓</span>'
+        '</div>'
+        '</div>'
+    )
+
+    folium.Marker(
+        location=[lat, lon],
+        popup=popup_anunciante_html(anunciante, map_name),
+        tooltip=f"Anunciante ativo: {anunciante.nome}{tooltip_tipo}",
+        icon=folium.DivIcon(html=marcador_html, icon_size=(40, 40), icon_anchor=(20, 20)),
+        z_index_offset=2000,
+    ).add_to(mapa)
+
+
+def painel_anunciantes_ativos_html(total: int) -> str:
+    return f'''
+    <div style="position: fixed;
+                bottom: 12px; right: 18px; z-index: 9999;
+                background: white; border: 2px solid #f59e0b;
+                border-radius: 10px; padding: 8px 10px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+                font-size: 13px; color: #111827;">
+        <b>📢 Anunciantes ativos:</b> {total}
+    </div>
+    '''
+
+
+def legenda_mapa_html(
+    regionais: list[str],
+    cabecalho: str = "Legenda - Regional",
+    contagem_por_regional: dict[str, int] = None,
+    exibir_contagem: bool = True,
+) -> str:
+    if contagem_por_regional is None:
+        contagem_por_regional = {}
+
+    def _rotulo_regional(regional: str) -> str:
+        nome = escape(regional)
+        if not exibir_contagem:
+            return nome
+        return f"{nome} ({contagem_por_regional.get(regional, 0)})"
+
     itens = "".join(
         [
-            f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {escape(regional)}<br>'
+            f'<i style="background: {cor_regional(regional)}; width: 10px; height: 10px; display: inline-block;"></i> {_rotulo_regional(regional)}<br>'
             for regional in regionais
         ]
     )
@@ -191,12 +392,68 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         .leaflet-control-clear-route button:hover {{
             background: #991b1b;
         }}
+        .leaflet-control-route-distance {{
+            background: #ffffff;
+            border: 2px solid #1d4ed8;
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 145px;
+        }}
     </style>
     <script>
         window.routeLayer_{map_name} = null;
         window.routeOriginMarker_{map_name} = null;
         window.routeDestinationMarker_{map_name} = null;
         window.selectedOrigin_{map_name} = null;
+        window.routeDistanceControl_{map_name} = null;
+        window.routeDistanceContainer_{map_name} = null;
+
+        function formatarDistancia_{map_name}(metros) {{
+            if (!Number.isFinite(metros)) return '--';
+            if (metros < 1000) return `${{Math.round(metros)}} m`;
+            return `${{(metros / 1000).toFixed(2)}} km`;
+        }}
+
+        function formatarDuracao_{map_name}(segundos) {{
+            if (!Number.isFinite(segundos) || segundos <= 0) return '--';
+            const totalMin = Math.round(segundos / 60);
+            if (totalMin < 60) return `${{totalMin}} min`;
+            const horas = Math.floor(totalMin / 60);
+            const minutos = totalMin % 60;
+            if (minutos === 0) return `${{horas}} h`;
+            return `${{horas}} h ${{minutos}} min`;
+        }}
+
+        function mostrarResumoRota_{map_name}(metros, segundos) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (!window.routeDistanceControl_{map_name}) {{
+                const RouteDistanceControl = L.Control.extend({{
+                    options: {{ position: 'bottomleft' }},
+                    onAdd: function() {{
+                        const container = L.DomUtil.create('div', 'leaflet-control-route-distance');
+                        container.style.display = 'none';
+                        L.DomEvent.disableClickPropagation(container);
+                        window.routeDistanceContainer_{map_name} = container;
+                        return container;
+                    }}
+                }});
+
+                window.routeDistanceControl_{map_name} = new RouteDistanceControl();
+                mapa.addControl(window.routeDistanceControl_{map_name});
+            }}
+
+            if (window.routeDistanceContainer_{map_name}) {{
+                window.routeDistanceContainer_{map_name}.innerHTML =
+                    `Distância: <b>${{formatarDistancia_{map_name}(metros)}}</b><br>Tempo estimado: <b>${{formatarDuracao_{map_name}(segundos)}}</b>`;
+                window.routeDistanceContainer_{map_name}.style.display = 'block';
+            }}
+        }}
 
         function limparRotaMapa_{map_name}() {{
             const mapa = window[{map_name_json}];
@@ -213,6 +470,10 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             if (window.routeDestinationMarker_{map_name}) {{
                 mapa.removeLayer(window.routeDestinationMarker_{map_name});
                 window.routeDestinationMarker_{map_name} = null;
+            }}
+            if (window.routeDistanceContainer_{map_name}) {{
+                window.routeDistanceContainer_{map_name}.style.display = 'none';
+                window.routeDistanceContainer_{map_name}.innerHTML = '';
             }}
         }}
 
@@ -264,12 +525,22 @@ def recursos_rota_mapa_html(map_name: str) -> str:
                 const coordinates = data.routes[0].geometry.coordinates.map(function(coord) {{
                     return [coord[1], coord[0]];
                 }});
+                const distanciaMetros = Number(data.routes[0].distance || 0);
+                const duracaoSegundos = Number(data.routes[0].duration || 0);
 
                 window.routeLayer_{map_name} = L.polyline(coordinates, {{
                     color: '#2563eb',
                     weight: 5,
                     opacity: 0.85
                 }}).addTo(mapa);
+
+                if (Number.isFinite(distanciaMetros) && distanciaMetros > 0) {{
+                    window.routeLayer_{map_name}.bindPopup(
+                        `Distância da rota: <b>${{formatarDistancia_{map_name}(distanciaMetros)}}</b><br>Tempo estimado: <b>${{formatarDuracao_{map_name}(duracaoSegundos)}}</b>`
+                    );
+                }}
+
+                mostrarResumoRota_{map_name}(distanciaMetros, duracaoSegundos);
 
                 mapa.fitBounds(window.routeLayer_{map_name}.getBounds(), {{ padding: [30, 30] }});
             }} catch (error) {{
@@ -356,23 +627,32 @@ def legenda_mapa_html_interativa(
     cabecalho: str,
     map_name: str,
     bounds_por_regional: dict[str, dict[str, float]],
+    contagem_por_regional: dict[str, int] = None,
+    exibir_contagem: bool = True,
 ) -> str:
     map_name_json = json.dumps(map_name)
+    if contagem_por_regional is None:
+        contagem_por_regional = {}
     itens = []
     for regional in regionais:
         estilo_ponto = (
             f'background: {cor_regional(regional)}; width: 10px; height: 10px; '
             'display: inline-block; margin-right: 6px;'
         )
+        contagem = contagem_por_regional.get(regional, 0)
+        if exibir_contagem:
+            rotulo_regional = f"{escape(regional)} ({contagem})"
+        else:
+            rotulo_regional = escape(regional)
         if regional in bounds_por_regional:
             itens.append(
                 f'<button type="button" class="legend-link" '
                 f'onclick="zoomParaRegional_{map_name}({json.dumps(regional)})">'
-                f'<i style="{estilo_ponto}"></i>{escape(regional)}</button>'
+                f'<i style="{estilo_ponto}"></i>{rotulo_regional}</button>'
             )
         else:
             itens.append(
-                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{escape(regional)}</span>'
+                f'<span class="legend-disabled"><i style="{estilo_ponto}"></i>{rotulo_regional}</span>'
             )
 
     bounds_json = json.dumps(bounds_por_regional)
@@ -495,6 +775,9 @@ EMAILS_ADMIN = {
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
+EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
+EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
+EXIBIR_ANUNCIANTES_MAPA = os.getenv("EXIBIR_ANUNCIANTES_MAPA", "true").lower() not in ("false", "0", "no")
 LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
@@ -561,6 +844,9 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
         return redirect
 
     exibir_logo_checked = "checked" if EXIBIR_LOGO else ""
+    exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
+    exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
+    exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
     logo_url_valor = escape(LOGO_URL or "")
     msg_html = ""
     if msg == "ok":
@@ -593,12 +879,27 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     <body>
         <div class="page">
             <h1>Configurações Visuais</h1>
-            <div class="desc">Altere os parâmetros globais de exibição de logo do sistema.</div>
+            <div class="desc">Altere os parâmetros globais de exibição do sistema.</div>
             {msg_html}
             <form method="post" action="/configuracoes">
                 <label class="check">
                     <input type="checkbox" name="exibir_logo" value="1" {exibir_logo_checked} />
                     Exibir logo nas páginas que usam essa configuração
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_contagem_locais_mapa" value="1" {exibir_contagem_locais_checked} />
+                    Exibir contagem por regional no mapa de locais
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_contagem_eventos_mapa" value="1" {exibir_contagem_eventos_checked} />
+                    Exibir contagem por regional no mapa de eventos
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_anunciantes_mapa" value="1" {exibir_anunciantes_mapa_checked} />
+                    Exibir anunciantes nos mapas
                 </label>
 
                 <label for="logo_url">URL do logo</label>
@@ -619,22 +920,43 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 def salvar_configuracoes(
     request: Request,
     exibir_logo: Optional[str] = Form(None),
+    exibir_contagem_locais_mapa: Optional[str] = Form(None),
+    exibir_contagem_eventos_mapa: Optional[str] = Form(None),
+    exibir_anunciantes_mapa: Optional[str] = Form(None),
     logo_url: str = Form(""),
 ):
     redirect = _redirect_se_nao_admin(request)
     if redirect:
         return redirect
 
-    global EXIBIR_LOGO, LOGO_URL
+    global EXIBIR_LOGO, LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
 
     try:
         novo_exibir_logo = bool(exibir_logo)
+        novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
+        novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
+        novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
         nova_logo_url = (logo_url or "").strip()
 
         _atualizar_variavel_env("EXIBIR_LOGO", "true" if novo_exibir_logo else "false")
+        _atualizar_variavel_env(
+            "EXIBIR_CONTAGEM_LOCAIS_MAPA",
+            "true" if novo_exibir_contagem_locais_mapa else "false",
+        )
+        _atualizar_variavel_env(
+            "EXIBIR_CONTAGEM_EVENTOS_MAPA",
+            "true" if novo_exibir_contagem_eventos_mapa else "false",
+        )
+        _atualizar_variavel_env(
+            "EXIBIR_ANUNCIANTES_MAPA",
+            "true" if novo_exibir_anunciantes_mapa else "false",
+        )
         _atualizar_variavel_env("LOGO_URL", nova_logo_url)
 
         EXIBIR_LOGO = novo_exibir_logo
+        EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
+        EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
+        EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
         LOGO_URL = nova_logo_url
         return RedirectResponse(url="/configuracoes?msg=ok", status_code=303)
     except Exception:
@@ -835,6 +1157,7 @@ def home(request: Request):
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
+                {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
@@ -1585,6 +1908,392 @@ def excluir_evento(request: Request, evento_id: int):
         db.close()
 
 
+@app.post("/cadastro/anunciante")
+def cadastrar_anunciante(
+    request: Request,
+    nome: str = Form(...),
+    tipo: str = Form(""),
+    endereco: str = Form(""),
+    latitude: float = Form(0.0),
+    longitude: float = Form(0.0),
+    urlimagem: str = Form(""),
+    datainicio: str = Form(""),
+    datafim: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        data_inicio_dt = None
+        data_fim_dt = None
+        if datainicio:
+            try:
+                data_inicio_dt = datetime.strptime(datainicio, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+        if datafim:
+            try:
+                data_fim_dt = datetime.strptime(datafim, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+
+        if data_inicio_dt and data_fim_dt and data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
+
+        latitude_geo, longitude_geo = geocodificar_endereco(endereco)
+        if latitude_geo is None or longitude_geo is None:
+            return RedirectResponse(url="/anunciantes?msg=endereco_nao_localizado", status_code=303)
+
+        anunciante = Anunciante(
+            nome=nome,
+            tipo=(tipo or "").strip(),
+            endereco=endereco,
+            latitude=latitude_geo,
+            longitude=longitude_geo,
+            urlimagem=urlimagem,
+            datainicio=data_inicio_dt,
+            datafim=data_fim_dt,
+        )
+        db.add(anunciante)
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/anunciante/{anunciante_id}/editar")
+def editar_anunciante(
+    request: Request,
+    anunciante_id: int,
+    nome: str = Form(...),
+    tipo: str = Form(""),
+    endereco: str = Form(""),
+    latitude: float = Form(0.0),
+    longitude: float = Form(0.0),
+    urlimagem: str = Form(""),
+    datainicio: str = Form(""),
+    datafim: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciante = db.query(Anunciante).filter(Anunciante.id == anunciante_id).first()
+        if not anunciante:
+            return RedirectResponse(url="/anunciantes?msg=nao_encontrado", status_code=303)
+
+        data_inicio_dt = None
+        data_fim_dt = None
+        if datainicio:
+            try:
+                data_inicio_dt = datetime.strptime(datainicio, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+        if datafim:
+            try:
+                data_fim_dt = datetime.strptime(datafim, "%Y-%m-%d").date()
+            except ValueError:
+                return RedirectResponse(url="/anunciantes?msg=data_invalida", status_code=303)
+
+        if data_inicio_dt and data_fim_dt and data_fim_dt < data_inicio_dt:
+            return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
+
+        latitude_geo, longitude_geo = geocodificar_endereco(endereco)
+        if latitude_geo is None or longitude_geo is None:
+            return RedirectResponse(url="/anunciantes?msg=endereco_nao_localizado", status_code=303)
+
+        anunciante.nome = nome
+        anunciante.tipo = (tipo or "").strip()
+        anunciante.endereco = endereco
+        anunciante.latitude = latitude_geo
+        anunciante.longitude = longitude_geo
+        anunciante.urlimagem = urlimagem
+        anunciante.datainicio = data_inicio_dt
+        anunciante.datafim = data_fim_dt
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=edit_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/cadastro/anunciante/{anunciante_id}/excluir")
+def excluir_anunciante(request: Request, anunciante_id: int):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciante = db.query(Anunciante).filter(Anunciante.id == anunciante_id).first()
+        if not anunciante:
+            return RedirectResponse(url="/anunciantes?msg=nao_encontrado", status_code=303)
+
+        db.delete(anunciante)
+        db.commit()
+        return RedirectResponse(url="/anunciantes?msg=delete_ok", status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/anunciantes", response_class=HTMLResponse)
+def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        anunciantes = db.query(Anunciante).order_by(Anunciante.nome).all()
+
+        msg_html = ""
+        if msg == "ok":
+            msg_html = '<div class="msg ok">Anunciante cadastrado com sucesso.</div>'
+        elif msg == "edit_ok":
+            msg_html = '<div class="msg ok">Anunciante atualizado com sucesso.</div>'
+        elif msg == "delete_ok":
+            msg_html = '<div class="msg ok">Anunciante excluído com sucesso.</div>'
+        elif msg == "nao_encontrado":
+            msg_html = '<div class="msg erro">Anunciante não encontrado.</div>'
+        elif msg == "data_invalida":
+            msg_html = '<div class="msg erro">Data inválida. Use o formato correto da tela.</div>'
+        elif msg == "periodo_invalido":
+            msg_html = '<div class="msg erro">A data fim não pode ser menor que a data início.</div>'
+        elif msg == "endereco_nao_localizado":
+            msg_html = '<div class="msg erro">Não foi possível localizar o endereço informado para preencher latitude e longitude.</div>'
+
+        anunciantes_html = ""
+        for anunciante in anunciantes:
+            anunciante_id = anunciante.id
+            anunciante_nome = escape(anunciante.nome or "")
+            anunciante_tipo = escape(anunciante.tipo or "")
+            anunciante_endereco = escape(anunciante.endereco or "")
+            anunciante_latitude = anunciante.latitude or 0.0
+            anunciante_longitude = anunciante.longitude or 0.0
+            anunciante_urlimagem = escape(anunciante.urlimagem or "")
+            anunciante_datainicio = anunciante.datainicio.isoformat() if anunciante.datainicio else ""
+            anunciante_datafim = anunciante.datafim.isoformat() if anunciante.datafim else ""
+
+            anunciantes_html += f"""
+            <tr>
+                <td>{anunciante_id}</td>
+                <td>{anunciante_nome}</td>
+                <td>{anunciante_tipo}</td>
+                <td>{anunciante_endereco}</td>
+                <td>{anunciante_latitude}</td>
+                <td>{anunciante_longitude}</td>
+                <td>{anunciante_datainicio}</td>
+                <td>{anunciante_datafim}</td>
+                <td><a href="{anunciante_urlimagem}" target="_blank">Ver</a></td>
+                <td>
+                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
+                    <form method="post" action="/cadastro/anunciante/{anunciante_id}/excluir" style="display:inline;">
+                        <button type="submit" onclick="return confirm('Tem certeza?')">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            """
+
+        return f"""
+        <html>
+        <head>
+            <title>Gerenciar Anunciantes</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+                .page {{ max-width: 1000px; margin: 0 auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+                h1 {{ margin-top: 0; color: #1f2937; }}
+                .msg {{ border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }}
+                .ok {{ background: #dcfce7; color: #166534; }}
+                .erro {{ background: #fee2e2; color: #991b1b; }}
+                .btn {{ background: #1f2937; color: white; border: none; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 700; }}
+                .btn:hover {{ background: #111827; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }}
+                th {{ background: #f3f4f6; font-weight: 700; color: #111827; }}
+                tr:hover {{ background: #f9fafb; }}
+                .modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.5); z-index: 9999; }}
+                .modal.show {{ display: flex; align-items: center; justify-content: center; }}
+                .modal-content {{ background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 100%; }}
+                .modal-content h2 {{ margin-top: 0; color: #1f2937; }}
+                .form-group {{ margin: 14px 0; }}
+                .form-group label {{ display: block; margin-bottom: 6px; font-weight: 700; color: #111827; }}
+                .form-group input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }}
+                .modal-buttons {{ margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }}
+                .btn-cancel {{ background: #e5e7eb; color: #111827; }}
+                .btn-cancel:hover {{ background: #d1d5db; }}
+                .actions {{ display: flex; gap: 10px; }}
+                a {{ color: #1f2937; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <a href="/" style="text-decoration:none;color:#1f2937;font-weight:700;">← Voltar</a>
+                <h1>Gerenciar Anunciantes</h1>
+                {msg_html}
+                <button class="btn" onclick="openCreateModal()">+ Novo Anunciante</button>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>Tipo</th>
+                            <th>Endereço</th>
+                            <th>Latitude</th>
+                            <th>Longitude</th>
+                            <th>Data Início</th>
+                            <th>Data Fim</th>
+                            <th>Imagem</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {anunciantes_html}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="createModal" class="modal">
+                <div class="modal-content">
+                    <h2>Novo Anunciante</h2>
+                    <form method="post" action="/cadastro/anunciante">
+                        <div class="form-group">
+                            <label for="nome">Nome *</label>
+                            <input id="nome" type="text" name="nome" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="tipo">Tipo</label>
+                            <input id="tipo" type="text" name="tipo" placeholder="Ex.: Restaurante, Hotel, Parceiro..." />
+                        </div>
+                        <div class="form-group">
+                            <label for="endereco">Endereço</label>
+                            <input id="endereco" type="text" name="endereco" />
+                        </div>
+                        <div class="form-group">
+                            <label for="latitude">Latitude</label>
+                            <input id="latitude" type="number" name="latitude" step="0.000001" value="0.0" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="longitude">Longitude</label>
+                            <input id="longitude" type="number" name="longitude" step="0.000001" value="0.0" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="urlimagem">URL da Imagem</label>
+                            <input id="urlimagem" type="text" name="urlimagem" />
+                        </div>
+                        <div class="form-group">
+                            <label for="datainicio">Data Início</label>
+                            <input id="datainicio" type="date" name="datainicio" />
+                        </div>
+                        <div class="form-group">
+                            <label for="datafim">Data Fim</label>
+                            <input id="datafim" type="date" name="datafim" />
+                        </div>
+                        <div class="modal-buttons">
+                            <button type="button" class="btn btn-cancel" onclick="closeCreateModal()">Cancelar</button>
+                            <button type="submit" class="btn">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="editModal" class="modal">
+                <div class="modal-content">
+                    <h2>Editar Anunciante</h2>
+                    <form id="editForm" method="post">
+                        <div class="form-group">
+                            <label for="edit_nome">Nome *</label>
+                            <input id="edit_nome" type="text" name="nome" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_tipo">Tipo</label>
+                            <input id="edit_tipo" type="text" name="tipo" placeholder="Ex.: Restaurante, Hotel, Parceiro..." />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_endereco">Endereço</label>
+                            <input id="edit_endereco" type="text" name="endereco" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_latitude">Latitude</label>
+                            <input id="edit_latitude" type="number" name="latitude" step="0.000001" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_longitude">Longitude</label>
+                            <input id="edit_longitude" type="number" name="longitude" step="0.000001" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_urlimagem">URL da Imagem</label>
+                            <input id="edit_urlimagem" type="text" name="urlimagem" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_datainicio">Data Início</label>
+                            <input id="edit_datainicio" type="date" name="datainicio" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_datafim">Data Fim</label>
+                            <input id="edit_datafim" type="date" name="datafim" />
+                        </div>
+                        <div class="modal-buttons">
+                            <button type="button" class="btn btn-cancel" onclick="closeEditModal()">Cancelar</button>
+                            <button type="submit" class="btn">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <script>
+                function openCreateModal() {{
+                    document.getElementById('createModal').classList.add('show');
+                }}
+
+                function closeCreateModal() {{
+                    document.getElementById('createModal').classList.remove('show');
+                    document.getElementById('nome').value = '';
+                    document.getElementById('tipo').value = '';
+                    document.getElementById('endereco').value = '';
+                    document.getElementById('latitude').value = '0.0';
+                    document.getElementById('longitude').value = '0.0';
+                    document.getElementById('urlimagem').value = '';
+                    document.getElementById('datainicio').value = '';
+                    document.getElementById('datafim').value = '';
+                }}
+
+                function openEditModal(id, nome, tipo, endereco, latitude, longitude, urlimagem, datainicio, datafim) {{
+                    document.getElementById('edit_nome').value = nome;
+                    document.getElementById('edit_tipo').value = tipo;
+                    document.getElementById('edit_endereco').value = endereco;
+                    document.getElementById('edit_latitude').value = latitude;
+                    document.getElementById('edit_longitude').value = longitude;
+                    document.getElementById('edit_urlimagem').value = urlimagem;
+                    document.getElementById('edit_datainicio').value = datainicio || '';
+                    document.getElementById('edit_datafim').value = datafim || '';
+                    document.getElementById('editForm').action = `/cadastro/anunciante/${{id}}/editar`;
+                    document.getElementById('editModal').classList.add('show');
+                }}
+
+                function closeEditModal() {{
+                    document.getElementById('editModal').classList.remove('show');
+                }}
+
+                document.getElementById('createModal').addEventListener('click', function(e) {{
+                    if (e.target === this) closeCreateModal();
+                }});
+
+                document.getElementById('editModal').addEventListener('click', function(e) {{
+                    if (e.target === this) closeEditModal();
+                }});
+            </script>
+        </body>
+        </html>
+        """
+    finally:
+        db.close()
+
+
 @app.get("/mapa-locais", response_class=HTMLResponse)
 def mapa_locais(request: Request):
     redirect = _redirect_se_nao_autenticado(request)
@@ -1594,18 +2303,29 @@ def mapa_locais(request: Request):
     db: Session = SessionLocal()
     try:
         locais = db.query(Local).all()
+        anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
+        data_referencia = datetime.now().date()
 
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
+        locais_mostrados = 0
+        contagem_por_regional = {}
         for local in locais:
             if not coordenadas_validas(local.latitude, local.longitude):
                 continue
             lat = float(local.latitude)
             lon = float(local.longitude)
+            regional = local.regiao or "Sem regional"
+
+            # Contar locais por regional
+            if regional not in contagem_por_regional:
+                contagem_por_regional[regional] = 0
+            contagem_por_regional[regional] += 1
+
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
@@ -1621,10 +2341,44 @@ def mapa_locais(request: Request):
                 tooltip=tooltip_text,
                 icon=folium.Icon(color=cor)
             ).add_to(mapa)
+            locais_mostrados += 1
 
-        cabecalho_legenda = f"Legenda - Regional ({len(locais)} locais)"
+        if EXIBIR_ANUNCIANTES_MAPA:
+            total_anunciantes_ativos = 0
+            for anunciante in anunciantes:
+                if not anunciante_ativo_em_data(anunciante, data_referencia):
+                    continue
+                if not coordenadas_validas(anunciante.latitude, anunciante.longitude):
+                    continue
+
+                adicionar_marcador_anunciante(mapa, anunciante, map_name)
+                total_anunciantes_ativos += 1
+
+            mapa.get_root().html.add_child(
+                folium.Element(painel_anunciantes_ativos_html(total_anunciantes_ativos))
+            )
+
+        # Adicionar "Sem regional" à lista se houver locais sem regional
+        if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
+            regionais.append("Sem regional")
+
+        # Filtrar apenas regionais que têm locais e incluir regionais presentes
+        # nos dados mas ausentes na tabela de regionais.
+        regionais_com_locais = [r for r in regionais if r in contagem_por_regional]
+        for regional in sorted(contagem_por_regional.keys()):
+            if regional not in regionais_com_locais:
+                regionais_com_locais.append(regional)
+
+        cabecalho_legenda = f"Legenda - Regional ({locais_mostrados} locais)"
         mapa.get_root().html.add_child(
-            folium.Element(legenda_mapa_html(regionais, cabecalho_legenda))
+            folium.Element(
+                legenda_mapa_html(
+                    regionais_com_locais,
+                    cabecalho_legenda,
+                    contagem_por_regional,
+                    exibir_contagem=EXIBIR_CONTAGEM_LOCAIS_MAPA,
+                )
+            )
         )
         return mapa.get_root().render()
     finally:
@@ -1662,7 +2416,9 @@ def mapa_eventos(request: Request):
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).all()
+        anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
+        data_referencia = datetime.now().date()
 
         # Centro do mapa em Belo Horizonte
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
@@ -1673,12 +2429,18 @@ def mapa_eventos(request: Request):
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
         eventos_mostrados = 0
+        contagem_por_regional = {}
         for evento in eventos:
             if not coordenadas_validas(evento.local.latitude, evento.local.longitude):
                 continue
             lat = float(evento.local.latitude)
             lon = float(evento.local.longitude)
             regional = evento.local.regiao or "Sem regional"
+
+            # Contar eventos por regional
+            if regional not in contagem_por_regional:
+                contagem_por_regional[regional] = 0
+            contagem_por_regional[regional] += 1
 
             limites = bounds_por_regional.get(regional)
             if not limites:
@@ -1714,14 +2476,42 @@ def mapa_eventos(request: Request):
             ).add_to(cluster_eventos)
             eventos_mostrados += 1
 
+        if EXIBIR_ANUNCIANTES_MAPA:
+            total_anunciantes_ativos = 0
+            for anunciante in anunciantes:
+                if not anunciante_ativo_em_data(anunciante, data_referencia):
+                    continue
+                if not coordenadas_validas(anunciante.latitude, anunciante.longitude):
+                    continue
+
+                adicionar_marcador_anunciante(mapa, anunciante, map_name)
+                total_anunciantes_ativos += 1
+
+            mapa.get_root().html.add_child(
+                folium.Element(painel_anunciantes_ativos_html(total_anunciantes_ativos))
+            )
+
+        # Adicionar "Sem regional" à lista se houver eventos sem regional
+        if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
+            regionais.append("Sem regional")
+
+        # Filtrar apenas regionais que têm eventos e incluir regionais presentes
+        # nos dados mas ausentes na tabela de regionais.
+        regionais_com_eventos = [r for r in regionais if r in contagem_por_regional]
+        for regional in sorted(contagem_por_regional.keys()):
+            if regional not in regionais_com_eventos:
+                regionais_com_eventos.append(regional)
+
         cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
         mapa.get_root().html.add_child(
             folium.Element(
                 legenda_mapa_html_interativa(
-                    regionais=regionais,
+                    regionais=regionais_com_eventos,
                     cabecalho=cabecalho_legenda,
                     map_name=map_name,
                     bounds_por_regional=bounds_por_regional,
+                    contagem_por_regional=contagem_por_regional,
+                    exibir_contagem=EXIBIR_CONTAGEM_EVENTOS_MAPA,
                 )
             )
         )
