@@ -1,11 +1,14 @@
 
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Base, engine
 from .models import Evento, Local
 
 Base.metadata.create_all(bind=engine)
+BASE_DIR = Path(__file__).resolve().parents[1]
+EVENTOS_CSV = BASE_DIR / "data" / "eventos.csv"
 
 def parse_date(date_str):
     date_str = str(date_str).strip()
@@ -39,7 +42,7 @@ def parse_date(date_str):
 
 
 def seed():
-    df = pd.read_csv("mapaCalorEventos/data/eventos.csv", sep=";")
+    df = pd.read_csv(EVENTOS_CSV, sep=";")
 
     db: Session = SessionLocal()
     try:
