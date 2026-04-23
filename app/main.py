@@ -26,6 +26,7 @@ from pathlib import Path
 #  python3 -m uvicorn mapaCalorEventos.app.main:app --port 8004
 #  python3 -m mapaCalorEventos.app.seed
 #. lsof -i :8004 | grep -v COMMAND | awk '{print $2}' | xargs kill -9
+# teste
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
