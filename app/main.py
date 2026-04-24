@@ -2295,10 +2295,11 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
 
 
 @app.get("/mapa-locais", response_class=HTMLResponse)
-def mapa_locais(request: Request):
-    redirect = _redirect_se_nao_autenticado(request)
-    if redirect:
-        return redirect
+def mapa_locais(request: Request, _publico: bool = False):
+    if not _publico:
+        redirect = _redirect_se_nao_autenticado(request)
+        if redirect:
+            return redirect
 
     db: Session = SessionLocal()
     try:
@@ -2310,7 +2311,8 @@ def mapa_locais(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        if not _publico:
+            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         locais_mostrados = 0
         contagem_por_regional = {}
@@ -2385,6 +2387,11 @@ def mapa_locais(request: Request):
         db.close()
 
 
+@app.get("/public/mapa-locais", response_class=HTMLResponse)
+def mapa_locais_publico(request: Request):
+    return mapa_locais(request, _publico=True)
+
+
 @app.get("/eventos")
 def listar_eventos(request: Request):
     redirect = _redirect_se_nao_autenticado(request)
@@ -2408,10 +2415,11 @@ def eventos_por_porte(request: Request, porte: str):
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos(request: Request):
-    redirect = _redirect_se_nao_autenticado(request)
-    if redirect:
-        return redirect
+def mapa_eventos(request: Request, _publico: bool = False):
+    if not _publico:
+        redirect = _redirect_se_nao_autenticado(request)
+        if redirect:
+            return redirect
 
     db: Session = SessionLocal()
     try:
@@ -2424,7 +2432,8 @@ def mapa_eventos(request: Request):
         mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        if not _publico:
+            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -2520,11 +2529,24 @@ def mapa_eventos(request: Request):
         db.close()
 
 
+@app.get("/public/mapa", response_class=HTMLResponse)
+def mapa_eventos_publico(request: Request):
+    return mapa_eventos(request, _publico=True)
+
+
 @app.get("/calendario", response_class=HTMLResponse)
-def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
-    redirect = _redirect_se_nao_autenticado(request)
-    if redirect:
-        return redirect
+def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: bool = False):
+    if not _publico:
+        redirect = _redirect_se_nao_autenticado(request)
+        if redirect:
+            return redirect
+
+    link_inicio = ""
+    acao_filtro = "/calendario"
+    if not _publico:
+        link_inicio = '<a href="/" style="text-decoration:none; color:#111827; font-weight:700; margin-right:auto;">Início</a>'
+    else:
+        acao_filtro = "/public/calendario"
 
     db: Session = SessionLocal()
     locais = db.query(Local).all()
@@ -2605,7 +2627,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     </head>
     <body>
         <div class="toolbar">
-            <a href="/" style="text-decoration:none; color:#111827; font-weight:700; margin-right:auto;">Início</a>
+            {link_inicio}
             <label for="formato_exportacao">Formato:</label>
             <select id="formato_exportacao">
                 <option value="16x9" selected>16:9 paisagem</option>
@@ -2618,7 +2640,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
             {logo_html}
             <h1>Calendário de Eventos de Belo Horizonte</h1>
         </div>
-        <form class="filtro-wrap" method="get" action="/calendario">
+        <form class="filtro-wrap" method="get" action="{acao_filtro}">
             <label for="tipo_evento">Tipo de evento:</label>
             <select name="tipo_evento" id="tipo_evento">
                 {opcoes_tipo_evento_html}
@@ -2634,6 +2656,8 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     """
     html = html.replace("{legendas_html}", legendas_html)
     html = html.replace("{logo_html}", logo_html)
+    html = html.replace("{link_inicio}", link_inicio)
+    html = html.replace("{acao_filtro}", acao_filtro)
 
     opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
     for tipo in TIPOS_EVENTO:
@@ -2770,3 +2794,235 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos"):
     </html>
     """
     return html
+
+
+@app.get("/public/calendario", response_class=HTMLResponse)
+def calendario_eventos_publico(request: Request, tipo_evento: str = "Todos"):
+    return calendario_eventos(request, tipo_evento=tipo_evento, _publico=True)
+
+
+@app.get("/public/visualizacao", response_class=HTMLResponse)
+def visualizacao_publica():
+    return """
+    <html>
+    <head>
+        <title>Visualização de Eventos BH</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+            :root {
+                --bg: #f4f7fb;
+                --panel: #ffffff;
+                --primary: #0f766e;
+                --primary-dark: #0d5f58;
+                --text: #12263a;
+                --muted: #5f6c7b;
+                --shadow: 0 10px 28px rgba(18, 38, 58, 0.12);
+            }
+
+            * { box-sizing: border-box; }
+
+            body {
+                margin: 0;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: radial-gradient(circle at top left, #e8f4f7 0%, var(--bg) 42%, #eef3ff 100%);
+                color: var(--text);
+                min-height: 100vh;
+            }
+
+            .layout {
+                display: grid;
+                grid-template-columns: 280px 1fr;
+                min-height: 100vh;
+                transition: grid-template-columns 0.28s ease;
+            }
+
+            .layout.retracted {
+                grid-template-columns: 0 1fr;
+            }
+
+            .sidebar {
+                padding: 18px;
+                background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+                color: #fff;
+                box-shadow: var(--shadow);
+                overflow: hidden;
+                transition: transform 0.28s ease, opacity 0.22s ease;
+                z-index: 3;
+            }
+
+            .layout.retracted .sidebar {
+                transform: translateX(-100%);
+                opacity: 0;
+                pointer-events: none;
+            }
+
+            .brand {
+                font-size: 20px;
+                font-weight: 800;
+                margin-bottom: 6px;
+                letter-spacing: 0.2px;
+            }
+
+            .subtitle {
+                color: rgba(255, 255, 255, 0.85);
+                margin-bottom: 20px;
+                font-size: 14px;
+            }
+
+            .menu-btn {
+                width: 100%;
+                border: none;
+                border-radius: 12px;
+                padding: 14px;
+                margin-bottom: 10px;
+                text-align: left;
+                font-weight: 700;
+                font-size: 15px;
+                color: #0f172a;
+                background: #e7f9f7;
+                cursor: pointer;
+                transition: transform 0.15s ease, background 0.15s ease;
+            }
+
+            .menu-btn:hover {
+                transform: translateY(-1px);
+                background: #d7f3ef;
+            }
+
+            .content {
+                padding: 16px;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .topbar {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 44px;
+            }
+
+            .back-btn {
+                border: none;
+                background: var(--primary);
+                color: #fff;
+                border-radius: 10px;
+                padding: 10px 14px;
+                font-weight: 700;
+                cursor: pointer;
+                box-shadow: var(--shadow);
+            }
+
+            .back-btn:hover { background: var(--primary-dark); }
+
+            .title {
+                font-weight: 700;
+                color: var(--muted);
+                font-size: 14px;
+            }
+
+            .frame-wrap {
+                flex: 1;
+                background: var(--panel);
+                border-radius: 14px;
+                overflow: hidden;
+                box-shadow: var(--shadow);
+                min-height: 72vh;
+            }
+
+            iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+                display: block;
+                background: #fff;
+            }
+
+            .intro {
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--muted);
+                font-weight: 600;
+                padding: 20px;
+                text-align: center;
+            }
+
+            @media (max-width: 860px) {
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+
+                .sidebar {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    bottom: 0;
+                    width: 84vw;
+                    max-width: 300px;
+                }
+
+                .layout.retracted .sidebar {
+                    transform: translateX(-100%);
+                }
+
+                .content {
+                    padding: 12px;
+                }
+
+                .frame-wrap {
+                    min-height: calc(100vh - 92px);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="layout" class="layout">
+            <aside id="sidebar" class="sidebar">
+                <div class="brand">Visualização Eventos BH</div>
+                <div class="subtitle">Mapa e calendário em modo rápido</div>
+                <button class="menu-btn" onclick="abrirConteudo('/public/mapa', 'Mapa de eventos')">Mapa</button>
+                <button class="menu-btn" onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais')">Mapa de locais</button>
+                <button class="menu-btn" onclick="abrirConteudo('/public/calendario', 'Calendário de eventos')">Calendário</button>
+            </aside>
+
+            <main class="content">
+                <div class="topbar">
+                    <button class="back-btn" id="btnVoltar" onclick="mostrarMenu()" style="display:none;">Voltar</button>
+                    <div class="title" id="tituloAtual">Selecione um item no menu lateral</div>
+                </div>
+                <div class="frame-wrap" id="frameWrap">
+                    <div class="intro" id="intro">Escolha Mapa ou Calendário no menu lateral.</div>
+                    <iframe id="viewer" src="about:blank" title="Visualização pública" style="display:none;"></iframe>
+                </div>
+            </main>
+        </div>
+
+        <script>
+            const layout = document.getElementById('layout');
+            const viewer = document.getElementById('viewer');
+            const intro = document.getElementById('intro');
+            const btnVoltar = document.getElementById('btnVoltar');
+            const tituloAtual = document.getElementById('tituloAtual');
+
+            function abrirConteudo(url, titulo) {
+                viewer.src = url;
+                viewer.style.display = 'block';
+                intro.style.display = 'none';
+                layout.classList.add('retracted');
+                btnVoltar.style.display = 'inline-block';
+                tituloAtual.textContent = titulo;
+            }
+
+            function mostrarMenu() {
+                layout.classList.remove('retracted');
+                btnVoltar.style.display = 'none';
+                tituloAtual.textContent = 'Selecione um item no menu lateral';
+            }
+        </script>
+    </body>
+    </html>
+    """
