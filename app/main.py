@@ -1135,6 +1135,41 @@ def board_interacoes(request: Request):
         return f"""
         <html>
         <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
+            <style>
+                 (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
             <title>Board de Interações</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
@@ -1215,6 +1250,41 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     return f"""
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
+            <style>
+                 (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
         <title>Configurações - Eventos BH</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
@@ -1385,6 +1455,41 @@ def login_page(request: Request):
     return f"""
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
+            <style>
+                 (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
         <title>Login - Eventos BH</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
@@ -1473,6 +1578,41 @@ def esqueci_senha_page(request: Request):
     return f"""
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
+            <style>
+                 (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
         <title>Redefinir senha - Eventos BH</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
@@ -1554,6 +1694,7 @@ def cadastro_rapido_page(request: Request):
     return """
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Cadastro rápido - Eventos BH</title>
         <style>
             body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
@@ -1706,6 +1847,24 @@ def home(request: Request):
     return f"""
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
         <title>Eventos BH</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
@@ -1814,6 +1973,24 @@ def usuarios_page(request: Request, msg: Optional[str] = None):
         return f"""
         <html>
         <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
             <title>Usuários - Eventos BH</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
@@ -2381,6 +2558,24 @@ def render_tela_cadastro_manutencao(
         return f"""
         <html>
         <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
             <title>{titulo_pagina}</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f7fafc; margin: 0; padding: 24px; }}
@@ -2932,6 +3127,24 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
         return f"""
         <html>
         <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                @media (max-width: 768px) {{
+                    html {{ font-size: 16px; }}
+                    body {{ padding: 12px !important; }}
+                    input, select, textarea, button, .btn, a.btn {{
+                        font-size: 16px !important;
+                        min-height: 44px;
+                            }}
+                    table {{
+                        display: block;
+                        width: 100%;
+                        overflow-x: auto;
+                        -webkit-overflow-scrolling: touch;
+                        white-space: nowrap;
+                            }}
+                        }}
+            </style>
             <title>Gerenciar Anunciantes</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
@@ -3460,6 +3673,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     html = """
     <html>
     <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Calendário de Eventos BH</title>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
@@ -3672,30 +3886,35 @@ def visualizacao_publica():
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
             :root {
-                --bg: #f4f7fb;
-                --panel: #ffffff;
-                --primary: #0f766e;
-                --primary-dark: #0d5f58;
-                --text: #12263a;
-                --muted: #5f6c7b;
-                --shadow: 0 10px 28px rgba(18, 38, 58, 0.12);
+                --bg: #eef2f5;
+                --card: #ffffff;
+                --line: #d7dee5;
+                --text: #0e2233;
+                --muted: #5c6f7f;
+                --accent: #0b4d68;
+                --accent-2: #0a7e88;
+                --accent-soft: #e8f4f6;
+                --shadow: 0 14px 34px rgba(12, 42, 58, 0.15);
             }
 
             * { box-sizing: border-box; }
 
-            body {
+            html, body {
                 margin: 0;
-                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-                background: radial-gradient(circle at top left, #e8f4f7 0%, var(--bg) 42%, #eef3ff 100%);
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+                background: radial-gradient(circle at 9% 12%, #ffffff 0, #f1f5f7 42%, #e4ebf1 100%);
                 color: var(--text);
-                min-height: 100vh;
             }
 
             .layout {
                 display: grid;
-                grid-template-columns: 280px 1fr;
+                grid-template-columns: 290px 1fr;
                 min-height: 100vh;
-                transition: grid-template-columns 0.28s ease;
+                transition: grid-template-columns 0.35s ease;
+                position: relative;
             }
 
             .layout.retracted {
@@ -3703,150 +3922,192 @@ def visualizacao_publica():
             }
 
             .sidebar {
-                padding: 18px;
-                background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+                background: linear-gradient(180deg, #103a52 0%, #0c546f 65%, #117a8b 100%);
                 color: #fff;
+                padding: 22px 16px;
+                border-right: 1px solid rgba(255, 255, 255, 0.16);
                 box-shadow: var(--shadow);
                 overflow: hidden;
-                transition: transform 0.28s ease, opacity 0.22s ease;
-                z-index: 3;
+                transition: transform 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
+                z-index: 30;
+                backdrop-filter: blur(2px);
             }
 
             .layout.retracted .sidebar {
-                transform: translateX(-100%);
                 opacity: 0;
-                visibility: hidden;
+                padding-left: 0;
+                padding-right: 0;
+                transform: translateX(-18px);
                 pointer-events: none;
             }
 
             .brand {
-                font-size: 20px;
+                font-size: 1.2rem;
                 font-weight: 800;
-                margin-bottom: 6px;
-                letter-spacing: 0.2px;
-            }
-
-            .subtitle {
-                color: rgba(255, 255, 255, 0.85);
-                margin-bottom: 20px;
-                font-size: 14px;
+                letter-spacing: 0.35px;
+                text-transform: uppercase;
             }
 
             .menu-btn {
                 width: 100%;
-                border: none;
-                border-radius: 12px;
-                padding: 14px;
                 margin-bottom: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.22);
+                border-radius: 12px;
+                padding: 12px 14px;
                 text-align: left;
+                color: #fff;
+                background: rgba(255, 255, 255, 0.11);
+                font-size: 0.95rem;
                 font-weight: 700;
-                font-size: 15px;
-                color: #0f172a;
-                background: #e7f9f7;
                 cursor: pointer;
-                transition: transform 0.15s ease, background 0.15s ease;
+                transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
             }
 
             .menu-btn:hover {
-                transform: translateY(-1px);
-                background: #d7f3ef;
+                background: rgba(255, 255, 255, 0.2);
+                transform: translateX(2px);
+                border-color: rgba(255, 255, 255, 0.45);
+            }
+
+            .menu-btn.active {
+                background: #fff;
+                color: #0b455d;
+                border-color: #fff;
+                box-shadow: 0 6px 18px rgba(10, 30, 42, 0.18);
             }
 
             .content {
-                padding: 16px;
+                display: grid;
+                grid-template-rows: auto 1fr;
                 min-width: 0;
-                display: flex;
-                flex-direction: column;
+                padding: 18px;
                 gap: 12px;
-                min-height: 100vh;
-                position: relative;
-                z-index: 1;
             }
 
             .topbar {
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                min-height: 44px;
+                padding: 10px 12px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.72);
+                backdrop-filter: blur(4px);
             }
 
             .back-btn {
-                border: none;
-                background: var(--primary);
-                color: #fff;
+                border: 1px solid #c7d4df;
                 border-radius: 10px;
-                padding: 10px 14px;
+                background: linear-gradient(180deg, #ffffff 0%, #f4f7f9 100%);
+                color: #17374b;
                 font-weight: 700;
+                padding: 9px 14px;
                 cursor: pointer;
-                box-shadow: var(--shadow);
+                transition: transform 0.15s ease;
             }
 
-            .back-btn:hover { background: var(--primary-dark); }
+            .back-btn:hover {
+                transform: translateY(-1px);
+            }
 
             .title {
+                font-size: 1rem;
                 font-weight: 700;
-                color: var(--muted);
-                font-size: 14px;
+                color: #123448;
+                letter-spacing: 0.2px;
             }
 
             .frame-wrap {
-                flex: 1;
-                background: var(--panel);
-                border-radius: 14px;
+                min-height: 70vh;
+                background: var(--card);
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                box-shadow: 0 10px 24px rgba(12, 42, 58, 0.09);
                 overflow: hidden;
-                box-shadow: var(--shadow);
-                min-height: 72vh;
-                height: calc(100vh - 96px);
-            }
-
-            iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
-                display: block;
-                background: #fff;
+                position: relative;
+                animation: frameIn 0.35s ease;
             }
 
             .intro {
-                height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--muted);
-                font-weight: 600;
-                padding: 20px;
+                display: grid;
+                place-items: center;
+                min-height: 70vh;
+                padding: 28px;
                 text-align: center;
+                color: var(--muted);
+                font-weight: 700;
+                font-size: 1.02rem;
+                line-height: 1.5;
+                background:
+                    radial-gradient(circle at 78% 8%, rgba(17, 122, 139, 0.1) 0, transparent 52%),
+                    radial-gradient(circle at 14% 84%, rgba(12, 84, 111, 0.1) 0, transparent 45%),
+                    #fff;
             }
 
-            @media (max-width: 860px) {
-                .layout {
-                    grid-template-columns: 1fr;
+            @keyframes frameIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(4px);
                 }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
 
-                .layout.retracted {
-                    grid-template-columns: 1fr;
+            #viewer {
+                width: 100%;
+                height: 100%;
+                min-height: 70vh;
+                border: 0;
+                display: block;
+            }
+
+            @media (max-width: 900px) {
+                .layout {
+                    display: block;
+                    position: relative;
+                    min-height: 100vh;
                 }
 
                 .sidebar {
                     position: fixed;
                     top: 0;
                     left: 0;
-                    bottom: 0;
-                    width: 84vw;
-                    max-width: 300px;
+                    width: 82vw;
+                    max-width: 320px;
+                    height: 100vh;
+                    border-right: 1px solid rgba(255, 255, 255, 0.2);
+                }
+
+                .layout:not(.retracted)::after {
+                    content: "";
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(5, 22, 31, 0.28);
+                    z-index: 20;
                 }
 
                 .layout.retracted .sidebar {
                     transform: translateX(-105%);
+                    opacity: 1;
+                    pointer-events: none;
                 }
 
                 .content {
-                    padding: 12px;
+                    padding: 10px;
+                    position: relative;
+                    z-index: 10;
                 }
 
-                .frame-wrap {
-                    height: calc(100dvh - 96px);
-                    min-height: calc(100dvh - 96px);
+                .frame-wrap,
+                .intro,
+                #viewer {
+                    min-height: calc(100vh - 94px);
+                }
+
+                .title {
+                    font-size: 0.95rem;
                 }
             }
         </style>
@@ -3855,10 +4116,9 @@ def visualizacao_publica():
         <div id="layout" class="layout">
             <aside id="sidebar" class="sidebar">
                 <div class="brand">Visualização Eventos BH</div>
-                <div class="subtitle">Mapa e calendário em modo rápido</div>
-                <button class="menu-btn" onclick="abrirConteudo('/public/mapa', 'Mapa de eventos')">Mapa de Eventos</button>
-                <button class="menu-btn" onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais')">Mapa de locais</button>
-                <button class="menu-btn" onclick="abrirConteudo('/public/calendario', 'Calendário de eventos')">Calendário</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário</button>
             </aside>
 
             <main class="content">
@@ -3879,14 +4139,19 @@ def visualizacao_publica():
             const intro = document.getElementById('intro');
             const btnVoltar = document.getElementById('btnVoltar');
             const tituloAtual = document.getElementById('tituloAtual');
+            const menuItems = Array.from(document.querySelectorAll('[data-menu-item]'));
 
-            function abrirConteudo(url, titulo) {
+            function abrirConteudo(url, titulo, el) {
                 viewer.src = url;
                 viewer.style.display = 'block';
                 intro.style.display = 'none';
                 layout.classList.add('retracted');
                 btnVoltar.style.display = 'inline-block';
                 tituloAtual.textContent = titulo;
+                menuItems.forEach((item) => item.classList.remove('active'));
+                if (el) {
+                    el.classList.add('active');
+                }
             }
 
             function mostrarMenu() {
