@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional, Anunciante
+from .models import Evento, Local, Regional, Anunciante, Usuario
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -17,6 +17,10 @@ import math
 import json
 import os
 import httpx
+import hashlib
+import hmac
+import secrets
+import re
 from pathlib import Path
 
 #para executar 
@@ -116,9 +120,28 @@ def garantir_colunas_anunciantes():
         )
 
 
+def garantir_colunas_usuarios():
+    with engine.begin() as conn:
+        colunas = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(usuarios)"))
+        }
+        if not colunas:
+            return
+        if "role" not in colunas:
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'"))
+        if "foto_url" not in colunas:
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN foto_url TEXT"))
+        if "telefone" not in colunas:
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN telefone TEXT"))
+        if "endereco" not in colunas:
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN endereco TEXT"))
+        conn.execute(text("UPDATE usuarios SET role = 'admin' WHERE role IS NULL OR TRIM(role) = ''"))
+
+
 garantir_colunas_locais()
 garantir_colunas_eventos()
 garantir_colunas_anunciantes()
+garantir_colunas_usuarios()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -742,6 +765,9 @@ if os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_CLIENT_SECRET"):
 
 
 def _provedores_oauth_disponiveis() -> list[str]:
+    if not USE_SOCIAL_LOGIN:
+        return []
+
     provedores = []
     for nome in ("google", "facebook", "apple"):
         if oauth.create_client(nome):
@@ -765,7 +791,7 @@ USUARIO_MESTRE = {
     "id": "mestre",
     "name": "Administrador",
     "email": "admin@sistema.local",
-    "admin": True,
+    "role": "super_admin",
 }
 
 EMAILS_ADMIN = {
@@ -774,6 +800,8 @@ EMAILS_ADMIN = {
 }
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
+USE_SOCIAL_LOGIN = REQUIRE_LOGIN and os.getenv("USE_SOCIAL_LOGIN", "true").lower() not in ("false", "0", "no")
+SENHA_SALT = os.getenv("PASSWORD_SALT", "eventos-bh-salt")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
@@ -791,11 +819,55 @@ def _usuario_atual(request: Request) -> dict:
     return request.session.get("user") or {}
 
 
-def _eh_admin(user: dict) -> bool:
-    if user.get("admin"):
+def _normalizar_cpf(cpf: str) -> str:
+    return re.sub(r"\D", "", cpf or "")
+
+
+def _hash_senha(senha: str) -> str:
+    salt = secrets.token_hex(16)
+    derivacao = hashlib.pbkdf2_hmac(
+        "sha256",
+        (senha or "").encode("utf-8"),
+        f"{SENHA_SALT}:{salt}".encode("utf-8"),
+        120000,
+    )
+    return f"{salt}${derivacao.hex()}"
+
+
+def _verificar_senha(senha: str, senha_hash: str) -> bool:
+    if not senha_hash or "$" not in senha_hash:
+        return False
+    salt, esperado = senha_hash.split("$", 1)
+    derivacao = hashlib.pbkdf2_hmac(
+        "sha256",
+        (senha or "").encode("utf-8"),
+        f"{SENHA_SALT}:{salt}".encode("utf-8"),
+        120000,
+    )
+    return hmac.compare_digest(derivacao.hex(), esperado)
+
+
+def _usuario_para_sessao(usuario: Usuario) -> dict:
+    return {
+        "provider": "local",
+        "id": str(usuario.id),
+        "name": usuario.nome,
+        "email": usuario.email,
+        "cpf": usuario.cpf,
+        "role": usuario.role or "admin",
+    }
+
+
+def _eh_super_admin(user: dict) -> bool:
+    if (user.get("role") or "").lower() == "super_admin":
         return True
     email = (user.get("email") or "").lower()
     return email in {e.lower() for e in EMAILS_ADMIN}
+
+
+def _eh_admin_ou_super_admin(user: dict) -> bool:
+    role = (user.get("role") or "").lower()
+    return role in {"admin", "super_admin"} or _eh_super_admin(user)
 
 
 def _redirect_se_nao_autenticado(request: Request):
@@ -812,7 +884,16 @@ def _redirect_se_nao_admin(request: Request):
     user = _usuario_atual(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if not _eh_admin(user):
+    if not _eh_admin_ou_super_admin(user):
+        return RedirectResponse(url="/?acesso=negado", status_code=303)
+    return None
+
+
+def _redirect_se_nao_super_admin(request: Request):
+    user = _usuario_atual(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not _eh_super_admin(user):
         return RedirectResponse(url="/?acesso=negado", status_code=303)
     return None
 
@@ -839,7 +920,7 @@ def _atualizar_variavel_env(chave: str, valor: str) -> None:
 
 @app.get("/configuracoes", response_class=HTMLResponse)
 def pagina_configuracoes(request: Request, msg: Optional[str] = None):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
@@ -925,7 +1006,7 @@ def salvar_configuracoes(
     exibir_anunciantes_mapa: Optional[str] = Form(None),
     logo_url: str = Form(""),
 ):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
@@ -971,6 +1052,7 @@ def login_page(request: Request):
         return RedirectResponse(url="/", status_code=303)
 
     auth_error = request.query_params.get("erro")
+    msg = request.query_params.get("msg")
     provedores = _provedores_oauth_disponiveis()
     botoes_html = ""
     for provedor in provedores:
@@ -993,7 +1075,14 @@ def login_page(request: Request):
             'Revise as credenciais e a URL de callback configurada.</div>'
         )
 
-    if not botoes_html:
+    if msg == "credenciais_invalidas":
+        erro_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Email/CPF ou senha inválidos.</div>'
+    elif msg == "cadastro_ok":
+        erro_html = '<div class="warn" style="background:#dcfce7;color:#166534;">Cadastro concluído. Faça login para continuar.</div>'
+    elif msg == "email_ou_cpf_duplicado":
+        erro_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Já existe usuário com este email ou CPF.</div>'
+
+    if not botoes_html and USE_SOCIAL_LOGIN:
         botoes_html = (
             '<div class="warn">Nenhum provedor OAuth configurado. '
             'Defina variáveis GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET '
@@ -1001,7 +1090,7 @@ def login_page(request: Request):
         )
 
     google_config_html = ""
-    if "google" not in provedores:
+    if USE_SOCIAL_LOGIN and "google" not in provedores:
         google_config_html = (
             '<div class="setup">'
             '<strong>Google:</strong> configure no Google Cloud Console o redirect URI '
@@ -1009,6 +1098,10 @@ def login_page(request: Request):
             'e preencha GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no arquivo .env.'
             '</div>'
         )
+
+    social_html = ""
+    if USE_SOCIAL_LOGIN:
+        social_html = f'<div class="divider"></div>{botoes_html}{google_config_html}'
 
     return f"""
     <html>
@@ -1022,9 +1115,15 @@ def login_page(request: Request):
             h1 {{ margin: 0 0 8px; color: #111827; }}
             p {{ margin: 0 0 20px; color: #4b5563; }}
             .btn {{ display: block; color: white; text-decoration: none; font-weight: 700; text-align: center; padding: 11px 14px; border-radius: 8px; margin-bottom: 10px; }}
+            .btn-alt {{ background: #111827; }}
+            .btn-lite {{ background: #4b5563; }}
             .warn {{ background: #fef3c7; color: #92400e; border-radius: 8px; padding: 12px; font-size: 14px; }}
             .setup {{ margin-top: 14px; background: #eff6ff; color: #1e3a8a; border-radius: 8px; padding: 12px; font-size: 14px; line-height: 1.5; }}
             code {{ background: #dbeafe; padding: 2px 6px; border-radius: 6px; }}
+            .divider {{ margin: 18px 0; border-top: 1px solid #e5e7eb; }}
+            .label {{ display: block; font-weight: 700; margin: 10px 0 6px; color: #111827; }}
+            .input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }}
+            .help {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
         </style>
     </head>
     <body>
@@ -1032,15 +1131,125 @@ def login_page(request: Request):
             <div class="card">
                 <a class="home-link" href="/">Início</a>
                 <h1>Entrar no Eventos BH</h1>
-                <p>Use uma conta social para acessar o sistema.</p>
+                <p>Use email ou CPF com senha. Se ainda não tiver cadastro, crie em poucos segundos.</p>
                 {erro_html}
-                {botoes_html}
-                {google_config_html}
+                <form method="post" action="/login/local">
+                    <label class="label" for="identificador">Email ou CPF</label>
+                    <input class="input" id="identificador" name="identificador" placeholder="email@dominio.com ou 00000000000" required />
+                    <label class="label" for="senha">Senha</label>
+                    <input class="input" id="senha" name="senha" type="password" required />
+                    <button class="btn btn-alt" type="submit">Entrar</button>
+                </form>
+                <a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>
+                {social_html}
             </div>
         </div>
     </body>
     </html>
     """
+
+
+@app.post("/login/local")
+def login_local(request: Request, identificador: str = Form(...), senha: str = Form(...)):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        identificador_limpo = (identificador or "").strip().lower()
+        cpf_limpo = _normalizar_cpf(identificador)
+
+        usuario = db.query(Usuario).filter(Usuario.email.ilike(identificador_limpo)).first()
+        if not usuario and cpf_limpo:
+            usuario = db.query(Usuario).filter(Usuario.cpf == cpf_limpo).first()
+
+        if not usuario or not _verificar_senha(senha, usuario.senha_hash):
+            return RedirectResponse(url="/login?msg=credenciais_invalidas", status_code=303)
+
+        request.session["user"] = _usuario_para_sessao(usuario)
+        return RedirectResponse(url="/", status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/cadastro-rapido", response_class=HTMLResponse)
+def cadastro_rapido_page(request: Request):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+
+    return """
+    <html>
+    <head>
+        <title>Cadastro rápido - Eventos BH</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
+            .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+            .card { width: 100%; max-width: 460px; background: #fff; border-radius: 12px; padding: 26px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }
+            h1 { margin: 0 0 8px; color: #111827; }
+            p { margin: 0 0 18px; color: #4b5563; }
+            .label { display: block; font-weight: 700; margin: 8px 0 6px; color: #111827; }
+            .input { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }
+            .btn { width: 100%; border: none; border-radius: 8px; padding: 11px 14px; font-weight: 700; color: #fff; background: #111827; cursor: pointer; }
+            .back { display: inline-block; margin-top: 12px; text-decoration: none; color: #1f2937; font-weight: 700; }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="card">
+                <h1>Cadastro rápido</h1>
+                <p>Cadastre-se com dados mínimos para acessar mapas, calendário e cadastros.</p>
+                <form method="post" action="/cadastro-rapido">
+                    <label class="label" for="nome">Nome</label>
+                    <input class="input" id="nome" name="nome" required />
+                    <label class="label" for="email">Email</label>
+                    <input class="input" id="email" name="email" type="email" required />
+                    <label class="label" for="cpf">CPF</label>
+                    <input class="input" id="cpf" name="cpf" required />
+                    <label class="label" for="senha">Senha</label>
+                    <input class="input" id="senha" name="senha" type="password" minlength="6" required />
+                    <button class="btn" type="submit">Criar conta</button>
+                </form>
+                <a class="back" href="/login">Voltar para login</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/cadastro-rapido")
+def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Form(...), senha: str = Form(...)):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+
+    nome_limpo = (nome or "").strip()
+    email_limpo = (email or "").strip().lower()
+    cpf_limpo = _normalizar_cpf(cpf)
+
+    if not nome_limpo or not email_limpo or len(cpf_limpo) != 11 or len((senha or "")) < 6:
+        return RedirectResponse(url="/login?msg=email_ou_cpf_duplicado", status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        existe = db.query(Usuario).filter((Usuario.email == email_limpo) | (Usuario.cpf == cpf_limpo)).first()
+        if existe:
+            return RedirectResponse(url="/login?msg=email_ou_cpf_duplicado", status_code=303)
+
+        usuario = Usuario(
+            nome=nome_limpo,
+            email=email_limpo,
+            cpf=cpf_limpo,
+            senha_hash=_hash_senha(senha),
+            role="admin",
+        )
+        db.add(usuario)
+        db.commit()
+        return RedirectResponse(url="/login?msg=cadastro_ok", status_code=303)
+    finally:
+        db.close()
 
 
 @app.get("/logout")
@@ -1051,6 +1260,9 @@ def logout(request: Request):
 
 @app.get("/auth/{provider}/login")
 async def oauth_login(provider: str, request: Request):
+    if not USE_SOCIAL_LOGIN:
+        return RedirectResponse(url="/login", status_code=303)
+
     client = oauth.create_client(provider)
     if not client:
         return RedirectResponse(url="/login", status_code=303)
@@ -1092,11 +1304,15 @@ async def oauth_callback(provider: str, request: Request):
             except Exception:
                 profile = {}
 
+    email = (profile.get("email") or "").lower()
+    role = "super_admin" if email in {e.lower() for e in EMAILS_ADMIN} else "user"
+
     request.session["user"] = {
         "provider": provider,
         "id": profile.get("sub") or profile.get("id") or "",
         "name": profile.get("name") or profile.get("email") or "Usuário",
         "email": profile.get("email") or "",
+        "role": role,
     }
     return RedirectResponse(url="/", status_code=303)
 
@@ -1114,7 +1330,8 @@ def home(request: Request):
         '<div style="background:#fee2e2;color:#991b1b;padding:10px 16px;border-radius:8px;margin-bottom:16px;">'
         'Acesso restrito. Você não tem permissão para acessar essa área.</div>'
     ) if acesso_negado else ""
-    is_admin = _eh_admin(user)
+    is_admin = _eh_admin_ou_super_admin(user)
+    is_super_admin = _eh_super_admin(user)
     return f"""
     <html>
     <head>
@@ -1157,8 +1374,9 @@ def home(request: Request):
                     <h2>Calendário de Eventos</h2>
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
-                {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_admin else ''}
-                {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/usuarios"><h2>Usuários</h2><p>Atualize seu cadastro completo e gerencie os usuários da plataforma.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_super_admin else ''}
+                {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
@@ -1167,6 +1385,192 @@ def home(request: Request):
     </body>
     </html>
     """
+
+
+@app.get("/usuarios", response_class=HTMLResponse)
+def usuarios_page(request: Request, msg: Optional[str] = None):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    user = _usuario_atual(request)
+    user_role = (user.get("role") or "").lower()
+
+    db: Session = SessionLocal()
+    try:
+        usuario_local = None
+        usuario_id = user.get("id") or ""
+        if str(usuario_id).isdigit() and (user.get("provider") == "local"):
+            usuario_local = db.query(Usuario).filter(Usuario.id == int(usuario_id)).first()
+
+        msg_html = ""
+        if msg == "ok":
+            msg_html = '<div class="msg ok">Perfil atualizado com sucesso.</div>'
+        elif msg == "erro":
+            msg_html = '<div class="msg erro">Não foi possível atualizar o perfil.</div>'
+        elif msg == "somente_local":
+            msg_html = '<div class="msg erro">Este perfil social não pode ser editado aqui. Use um login local para atualizar os dados.</div>'
+        elif msg == "email_ou_cpf_duplicado":
+            msg_html = '<div class="msg erro">Email ou CPF já cadastrado para outro usuário.</div>'
+
+        nome_valor = escape((usuario_local.nome if usuario_local else user.get("name") or ""))
+        email_valor = escape((usuario_local.email if usuario_local else user.get("email") or ""))
+        cpf_valor = escape((usuario_local.cpf if usuario_local else user.get("cpf") or ""))
+        telefone_valor = escape((usuario_local.telefone if usuario_local else "") or "")
+        endereco_valor = escape((usuario_local.endereco if usuario_local else "") or "")
+        foto_url_valor = escape((usuario_local.foto_url if usuario_local else "") or "")
+
+        usuarios_html = ""
+        if _eh_super_admin(user):
+            usuarios = db.query(Usuario).order_by(Usuario.nome).all()
+            for u in usuarios:
+                usuarios_html += (
+                    f"<tr><td>{u.id}</td><td>{escape(u.nome or '')}</td><td>{escape(u.email or '')}</td>"
+                    f"<td>{escape(u.cpf or '')}</td><td>{escape(u.role or '')}</td></tr>"
+                )
+
+        bloco_lista = ""
+        if usuarios_html:
+            bloco_lista = f"""
+            <h2>Usuários cadastrados</h2>
+            <table>
+                <tr><th>ID</th><th>Nome</th><th>Email</th><th>CPF</th><th>Perfil</th></tr>
+                {usuarios_html}
+            </table>
+            """
+
+        return f"""
+        <html>
+        <head>
+            <title>Usuários - Eventos BH</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+                .page {{ max-width: 980px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+                h1 {{ margin-top: 0; color: #1f2937; }}
+                .desc {{ color: #4b5563; margin-bottom: 16px; }}
+                .role {{ display: inline-block; background: #e0f2fe; color: #0c4a6e; font-weight: 700; border-radius: 999px; padding: 4px 10px; font-size: 12px; }}
+                .msg {{ border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }}
+                .ok {{ background: #dcfce7; color: #166534; }}
+                .erro {{ background: #fee2e2; color: #991b1b; }}
+                .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
+                label {{ display: block; margin: 10px 0 6px; font-weight: 700; color: #111827; }}
+                input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }}
+                .actions {{ margin-top: 16px; display: flex; gap: 10px; }}
+                .btn {{ border: none; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }}
+                .btn-primary {{ background: #1f2937; color: #fff; }}
+                .btn-secondary {{ background: #e5e7eb; color: #111827; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 18px; }}
+                th, td {{ border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }}
+                th {{ background: #f3f4f6; }}
+                @media (max-width: 760px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <h1>Usuários</h1>
+                <div class="desc">Atualize seu cadastro completo. Perfis criados no cadastro rápido entram como administrador.</div>
+                <div class="role">Perfil atual: {escape(user_role or 'user')}</div>
+                {msg_html}
+                <form method="post" action="/usuarios/perfil">
+                    <div class="grid">
+                        <div>
+                            <label for="nome">Nome</label>
+                            <input id="nome" name="nome" value="{nome_valor}" required />
+                        </div>
+                        <div>
+                            <label for="email">Email</label>
+                            <input id="email" name="email" type="email" value="{email_valor}" required />
+                        </div>
+                        <div>
+                            <label for="cpf">CPF</label>
+                            <input id="cpf" name="cpf" value="{cpf_valor}" required />
+                        </div>
+                        <div>
+                            <label for="telefone">Telefone</label>
+                            <input id="telefone" name="telefone" value="{telefone_valor}" />
+                        </div>
+                        <div>
+                            <label for="endereco">Endereço</label>
+                            <input id="endereco" name="endereco" value="{endereco_valor}" />
+                        </div>
+                        <div>
+                            <label for="foto_url">URL da foto</label>
+                            <input id="foto_url" name="foto_url" value="{foto_url_valor}" />
+                        </div>
+                        <div>
+                            <label for="senha">Nova senha (opcional)</label>
+                            <input id="senha" name="senha" type="password" minlength="6" />
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-primary" type="submit">Salvar perfil</button>
+                        <a class="btn btn-secondary" href="/">Voltar</a>
+                    </div>
+                </form>
+                {bloco_lista}
+            </div>
+        </body>
+        </html>
+        """
+    finally:
+        db.close()
+
+
+@app.post("/usuarios/perfil")
+def salvar_perfil_usuario(
+    request: Request,
+    nome: str = Form(...),
+    email: str = Form(...),
+    cpf: str = Form(...),
+    telefone: str = Form(""),
+    endereco: str = Form(""),
+    foto_url: str = Form(""),
+    senha: str = Form(""),
+):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    user = _usuario_atual(request)
+    if user.get("provider") != "local" or not str(user.get("id") or "").isdigit():
+        return RedirectResponse(url="/usuarios?msg=somente_local", status_code=303)
+
+    nome_limpo = (nome or "").strip()
+    email_limpo = (email or "").strip().lower()
+    cpf_limpo = _normalizar_cpf(cpf)
+
+    if not nome_limpo or not email_limpo or len(cpf_limpo) != 11:
+        return RedirectResponse(url="/usuarios?msg=erro", status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        usuario = db.query(Usuario).filter(Usuario.id == int(user["id"])).first()
+        if not usuario:
+            return RedirectResponse(url="/usuarios?msg=erro", status_code=303)
+
+        duplicado = db.query(Usuario).filter(
+            ((Usuario.email == email_limpo) | (Usuario.cpf == cpf_limpo)) & (Usuario.id != usuario.id)
+        ).first()
+        if duplicado:
+            return RedirectResponse(url="/usuarios?msg=email_ou_cpf_duplicado", status_code=303)
+
+        usuario.nome = nome_limpo
+        usuario.email = email_limpo
+        usuario.cpf = cpf_limpo
+        usuario.telefone = (telefone or "").strip()
+        usuario.endereco = (endereco or "").strip()
+        usuario.foto_url = (foto_url or "").strip()
+        if (senha or "").strip():
+            usuario.senha_hash = _hash_senha(senha)
+
+        db.commit()
+        request.session["user"] = _usuario_para_sessao(usuario)
+        return RedirectResponse(url="/usuarios?msg=ok", status_code=303)
+    except Exception:
+        db.rollback()
+        return RedirectResponse(url="/usuarios?msg=erro", status_code=303)
+    finally:
+        db.close()
 
 
 def render_tela_cadastro_manutencao(
@@ -1920,7 +2324,7 @@ def cadastrar_anunciante(
     datainicio: str = Form(""),
     datafim: str = Form(""),
 ):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
@@ -1976,7 +2380,7 @@ def editar_anunciante(
     datainicio: str = Form(""),
     datafim: str = Form(""),
 ):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
@@ -2022,7 +2426,7 @@ def editar_anunciante(
 
 @app.post("/cadastro/anunciante/{anunciante_id}/excluir")
 def excluir_anunciante(request: Request, anunciante_id: int):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
@@ -2041,7 +2445,7 @@ def excluir_anunciante(request: Request, anunciante_id: int):
 
 @app.get("/anunciantes", response_class=HTMLResponse)
 def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
-    redirect = _redirect_se_nao_admin(request)
+    redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
