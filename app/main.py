@@ -3884,15 +3884,212 @@ def visualizacao_publica():
     <head>
         <title>Visualização de Eventos BH</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+            :root {
+                --bg: #f4f6f8;
+                --card: #ffffff;
+                --line: #d7dee5;
+                --text: #0e2233;
+                --muted: #5c6f7f;
+                --accent: #0c546f;
+                --accent-2: #117a8b;
+                --shadow: 0 14px 34px rgba(12, 42, 58, 0.15);
+            }
+
+            * { box-sizing: border-box; }
+
+            html, body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: radial-gradient(circle at 12% 16%, #ffffff 0, #f4f6f8 52%, #e7ecf1 100%);
+                color: var(--text);
+            }
+
+            .layout {
+                display: grid;
+                grid-template-columns: 290px 1fr;
+                min-height: 100vh;
+                transition: grid-template-columns 0.35s ease;
+            }
+
+            .layout.retracted {
+                grid-template-columns: 0 1fr;
+            }
+
+            .sidebar {
+                background: linear-gradient(180deg, #103a52 0%, #0c546f 65%, #117a8b 100%);
+                color: #fff;
+                padding: 22px 16px;
+                border-right: 1px solid rgba(255, 255, 255, 0.16);
+                box-shadow: var(--shadow);
+                overflow: hidden;
+                transition: transform 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
+                z-index: 30;
+            }
+
+            .layout.retracted .sidebar {
+                opacity: 0;
+                padding-left: 0;
+                padding-right: 0;
+                transform: translateX(-18px);
+                pointer-events: none;
+            }
+
+            .brand {
+                font-size: 1.2rem;
+                font-weight: 800;
+                letter-spacing: 0.2px;
+            }
+
+            .subtitle {
+                margin-top: 6px;
+                margin-bottom: 18px;
+                font-size: 0.92rem;
+                color: rgba(255, 255, 255, 0.88);
+                line-height: 1.4;
+            }
+
+            .menu-btn {
+                width: 100%;
+                margin-bottom: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.22);
+                border-radius: 12px;
+                padding: 12px 14px;
+                text-align: left;
+                color: #fff;
+                background: rgba(255, 255, 255, 0.11);
+                font-size: 0.95rem;
+                font-weight: 700;
+                cursor: pointer;
+                transition: transform 0.15s ease, background-color 0.2s ease;
+            }
+
+            .menu-btn:hover {
+                background: rgba(255, 255, 255, 0.2);
+                transform: translateX(2px);
+            }
+
+            .menu-btn.active {
+                background: #fff;
+                color: #0b455d;
+                border-color: #fff;
+            }
+
+            .content {
+                display: grid;
+                grid-template-rows: auto 1fr;
+                min-width: 0;
+                padding: 18px;
+                gap: 12px;
+            }
+
+            .topbar {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 4px;
+            }
+
+            .back-btn {
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: #fff;
+                color: #122b3a;
+                font-weight: 700;
+                padding: 9px 14px;
+                cursor: pointer;
+            }
+
+            .title {
+                font-size: 1rem;
+                font-weight: 700;
+                color: #123448;
+            }
+
+            .frame-wrap {
+                min-height: 70vh;
+                background: var(--card);
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                box-shadow: 0 10px 24px rgba(12, 42, 58, 0.09);
+                overflow: hidden;
+                position: relative;
+            }
+
+            .intro {
+                display: grid;
+                place-items: center;
+                min-height: 70vh;
+                padding: 28px;
+                text-align: center;
+                color: var(--muted);
+                font-weight: 700;
+                font-size: 1.02rem;
+                line-height: 1.5;
+                background:
+                    radial-gradient(circle at 78% 8%, rgba(17, 122, 139, 0.08) 0, transparent 52%),
+                    radial-gradient(circle at 14% 84%, rgba(12, 84, 111, 0.08) 0, transparent 45%),
+                    #fff;
+            }
+
+            #viewer {
+                width: 100%;
+                height: 100%;
+                min-height: 70vh;
+                border: 0;
+                display: block;
+            }
+
+            @media (max-width: 900px) {
+                .layout {
+                    display: block;
+                    position: relative;
+                    min-height: 100vh;
+                }
+
+                .sidebar {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 82vw;
+                    max-width: 320px;
+                    height: 100vh;
+                    border-right: 1px solid rgba(255, 255, 255, 0.2);
+                }
+
+                .layout.retracted .sidebar {
+                    transform: translateX(-105%);
+                    opacity: 1;
+                    pointer-events: none;
+                }
+
+                .content {
+                    padding: 10px;
+                }
+
+                .frame-wrap,
+                .intro,
+                #viewer {
+                    min-height: calc(100vh - 94px);
+                }
+
+                .title {
+                    font-size: 0.95rem;
+                }
+            }
+        </style>
     </head>
     <body>
         <div id="layout" class="layout">
             <aside id="sidebar" class="sidebar">
                 <div class="brand">Visualização Eventos BH</div>
                 <div class="subtitle">Mapa e calendário em modo rápido</div>
-                <button class="menu-btn" onclick="abrirConteudo('/public/mapa', 'Mapa de eventos')">Mapa de Eventos</button>
-                <button class="menu-btn" onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais')">Mapa de locais</button>
-                <button class="menu-btn" onclick="abrirConteudo('/public/calendario', 'Calendário de eventos')">Calendário</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário</button>
             </aside>
 
             <main class="content">
@@ -3913,14 +4110,19 @@ def visualizacao_publica():
             const intro = document.getElementById('intro');
             const btnVoltar = document.getElementById('btnVoltar');
             const tituloAtual = document.getElementById('tituloAtual');
+            const menuItems = Array.from(document.querySelectorAll('[data-menu-item]'));
 
-            function abrirConteudo(url, titulo) {
+            function abrirConteudo(url, titulo, el) {
                 viewer.src = url;
                 viewer.style.display = 'block';
                 intro.style.display = 'none';
                 layout.classList.add('retracted');
                 btnVoltar.style.display = 'inline-block';
                 tituloAtual.textContent = titulo;
+                menuItems.forEach((item) => item.classList.remove('active'));
+                if (el) {
+                    el.classList.add('active');
+                }
             }
 
             function mostrarMenu() {
