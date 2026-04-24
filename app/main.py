@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional, Anunciante, Usuario, InteracaoClique
+from .. import __version__ as APP_VERSION
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -1911,11 +1912,16 @@ def home(request: Request):
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
-            <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados.</div>
+            <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados. Versão atual: {APP_VERSION}</div>
         </div>
     </body>
     </html>
     """
+
+
+@app.get("/version")
+def version():
+    return {"app": "mapaCalorEventos", "version": APP_VERSION}
 
 
 @app.get("/usuarios", response_class=HTMLResponse)
