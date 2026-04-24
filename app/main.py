@@ -1046,27 +1046,91 @@ def board_interacoes(request: Request):
     db: Session = SessionLocal()
     try:
         interacoes = db.query(InteracaoClique).order_by(InteracaoClique.data_referencia.desc()).all()
+        nomes_locais = {
+            item_id: nome or ""
+            for item_id, nome in db.query(Local.id, Local.nome).all()
+        }
+        nomes_eventos = {
+            item_id: nome or ""
+            for item_id, nome in db.query(Evento.id, Evento.nome).all()
+        }
+        nomes_anunciantes = {
+            item_id: nome or ""
+            for item_id, nome in db.query(Anunciante.id, Anunciante.nome).all()
+        }
 
         por_dia = {}
         por_mes = {}
         por_ano = {}
+
+        def acumular(dicionario: dict, chave: str, acao: str):
+            if chave not in dicionario:
+                dicionario[chave] = {"visualizado": 0, "acessado": 0}
+            if acao in {"visualizado", "acessado"}:
+                dicionario[chave][acao] += 1
+
         for item in interacoes:
             dia = item.data_referencia.strftime("%Y-%m-%d")
             mes = item.data_referencia.strftime("%Y-%m")
             ano = item.data_referencia.strftime("%Y")
-            por_dia[dia] = por_dia.get(dia, 0) + 1
-            por_mes[mes] = por_mes.get(mes, 0) + 1
-            por_ano[ano] = por_ano.get(ano, 0) + 1
+            acao = (item.acao or "").strip().lower()
+            acumular(por_dia, dia, acao)
+            acumular(por_mes, mes, acao)
+            acumular(por_ano, ano, acao)
 
         linhas_dia = "".join(
-            [f"<tr><td>{d}</td><td>{t}</td></tr>" for d, t in sorted(por_dia.items(), reverse=True)]
-        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+            [
+                f"<tr><td>{d}</td><td>{dados['visualizado']}</td><td>{dados['acessado']}</td><td>{dados['visualizado'] + dados['acessado']}</td></tr>"
+                for d, dados in sorted(por_dia.items(), reverse=True)
+            ]
+        ) or '<tr><td colspan="4">Sem dados</td></tr>'
         linhas_mes = "".join(
-            [f"<tr><td>{m}</td><td>{t}</td></tr>" for m, t in sorted(por_mes.items(), reverse=True)]
-        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+            [
+                f"<tr><td>{m}</td><td>{dados['visualizado']}</td><td>{dados['acessado']}</td><td>{dados['visualizado'] + dados['acessado']}</td></tr>"
+                for m, dados in sorted(por_mes.items(), reverse=True)
+            ]
+        ) or '<tr><td colspan="4">Sem dados</td></tr>'
         linhas_ano = "".join(
-            [f"<tr><td>{a}</td><td>{t}</td></tr>" for a, t in sorted(por_ano.items(), reverse=True)]
-        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+            [
+                f"<tr><td>{a}</td><td>{dados['visualizado']}</td><td>{dados['acessado']}</td><td>{dados['visualizado'] + dados['acessado']}</td></tr>"
+                for a, dados in sorted(por_ano.items(), reverse=True)
+            ]
+        ) or '<tr><td colspan="4">Sem dados</td></tr>'
+
+        def nome_entidade(interacao: InteracaoClique) -> str:
+            tipo = (interacao.entidade_tipo or "").strip().lower()
+            if tipo == "local":
+                nome = nomes_locais.get(interacao.entidade_id)
+            elif tipo == "evento":
+                nome = nomes_eventos.get(interacao.entidade_id)
+            elif tipo == "anunciante":
+                nome = nomes_anunciantes.get(interacao.entidade_id)
+            else:
+                nome = ""
+            return nome or f"{tipo.capitalize()} #{interacao.entidade_id}"
+
+        por_dia_entidade = {}
+        for item in interacoes:
+            dia = item.data_referencia.strftime("%Y-%m-%d")
+            tipo = (item.entidade_tipo or "").strip().lower()
+            nome = nome_entidade(item)
+            chave = (dia, tipo, nome)
+            if chave not in por_dia_entidade:
+                por_dia_entidade[chave] = {"visualizado": 0, "acessado": 0}
+            acao = (item.acao or "").strip().lower()
+            if acao in {"visualizado", "acessado"}:
+                por_dia_entidade[chave][acao] += 1
+
+        linhas_interacoes = "".join(
+            [
+                f"<tr><td>{dia}</td><td>{escape(tipo.capitalize())}</td><td>{escape(nome)}</td><td>{dados['visualizado']}</td><td>{dados['acessado']}</td><td>{dados['visualizado'] + dados['acessado']}</td></tr>"
+                for (dia, tipo, nome), dados in sorted(
+                    por_dia_entidade.items(),
+                    key=lambda item: (item[0][0], item[0][1], item[0][2]),
+                    reverse=True,
+                )
+            ]
+        ) or '<tr><td colspan="6">Sem dados</td></tr>'
 
         return f"""
         <html>
@@ -1078,6 +1142,8 @@ def board_interacoes(request: Request):
                 h1 {{ margin-top: 0; color: #1f2937; }}
                 .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }}
                 .card {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }}
+                .details-card {{ margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }}
+                .table-wrap {{ max-height: 360px; overflow: auto; }}
                 table {{ width: 100%; border-collapse: collapse; }}
                 th, td {{ border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }}
                 th {{ color: #111827; background: #f3f4f6; }}
@@ -1093,22 +1159,31 @@ def board_interacoes(request: Request):
                     <div class="card">
                         <h3>Total por dia</h3>
                         <table>
-                            <tr><th>Dia</th><th>Cliques</th></tr>
+                            <tr><th>Dia</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
                             {linhas_dia}
                         </table>
                     </div>
                     <div class="card">
                         <h3>Total por mês</h3>
                         <table>
-                            <tr><th>Mês</th><th>Cliques</th></tr>
+                            <tr><th>Mês</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
                             {linhas_mes}
                         </table>
                     </div>
                     <div class="card">
                         <h3>Total por ano</h3>
                         <table>
-                            <tr><th>Ano</th><th>Cliques</th></tr>
+                            <tr><th>Ano</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
                             {linhas_ano}
+                        </table>
+                    </div>
+                </div>
+                <div class="details-card">
+                    <h3>Total diário por entidade e tipo de interação</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <tr><th>Data</th><th>Tipo</th><th>Nome</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
+                            {linhas_interacoes}
                         </table>
                     </div>
                 </div>
