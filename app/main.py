@@ -347,17 +347,17 @@ def _normalizar_site_url(site_url: str) -> str:
 def _site_html(site_url: str) -> str:
     url = _normalizar_site_url(site_url)
     if not url:
-        return "Site: Não informado<br>"
-    return f'Site: <a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+        return ""
+    return f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
 
 
 def _site_html_rastreado(site_url: str, entidade_tipo: str, entidade_id: int) -> str:
     url = _normalizar_site_url(site_url)
     if not url:
-        return "Site: Não informado<br>"
+        return ""
     destino = quote_plus(url)
     href = f"/interacoes/site?entidade_tipo={quote_plus(entidade_tipo)}&entidade_id={entidade_id}&destino={destino}"
-    return f'Site: <a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+    return f'<a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
 
 
 def _telefone_html(telefone: str) -> str:
