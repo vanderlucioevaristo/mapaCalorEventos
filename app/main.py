@@ -79,6 +79,10 @@ def garantir_colunas_locais():
                     "ALTER TABLE locais ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
                 )
             )
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE locais ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE locais ADD COLUMN site_url TEXT"))
         conn.execute(
             text(
                 "UPDATE locais SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
@@ -97,6 +101,10 @@ def garantir_colunas_eventos():
                     "ALTER TABLE eventos ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
                 )
             )
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN site_url TEXT"))
         conn.execute(
             text(
                 "UPDATE eventos SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
@@ -115,6 +123,10 @@ def garantir_colunas_anunciantes():
             conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datafim DATE"))
         if "tipo" not in colunas:
             conn.execute(text("ALTER TABLE anunciantes ADD COLUMN tipo TEXT NOT NULL DEFAULT ''"))
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN site_url TEXT"))
         conn.execute(
             text("UPDATE anunciantes SET tipo = '' WHERE tipo IS NULL")
         )
@@ -184,6 +196,29 @@ def coordenadas_validas(latitude, longitude) -> bool:
     if math.isnan(lat) or math.isnan(lon):
         return False
     return -90 <= lat <= 90 and -180 <= lon <= 180
+
+
+def _normalizar_site_url(site_url: str) -> str:
+    url = (site_url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return f"https://{url}"
+
+
+def _site_html(site_url: str) -> str:
+    url = _normalizar_site_url(site_url)
+    if not url:
+        return "Site: Não informado<br>"
+    return f'Site: <a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+
+
+def _telefone_html(telefone: str) -> str:
+    telefone_limpo = (telefone or "").strip()
+    if not telefone_limpo:
+        return "Telefone: Não informado<br>"
+    return f"Telefone: {escape(telefone_limpo)}<br>"
 
 
 def geocodificar_endereco(endereco: str) -> tuple[Optional[float], Optional[float]]:
@@ -263,6 +298,8 @@ def popup_anunciante_html(anunciante: Anunciante, map_name: str) -> str:
         f"<b>Anunciante: {escape(anunciante.nome or '')}</b><br>"
         f"{tipo_html}"
         f"Endereço: {escape(anunciante.endereco or '')}<br>"
+        f"{_telefone_html(anunciante.contato_telefone)}"
+        f"{_site_html(anunciante.site_url)}"
         f"{periodo}"
         f"Lat: {lat}, Lon: {lon}"
         f"{imagem_html}"
@@ -1765,6 +1802,8 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_telefone = escape(local.contato_telefone or "")
+            local_site = escape(local.site_url or "")
             local_tipo_evento = normalizar_tipo_evento(local.tipo_evento)
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
@@ -1805,6 +1844,12 @@ def render_tela_cadastro_manutencao(
                         <label>Longitude</label>
                         <input type="number" step="any" name="longitude" value="{local.longitude}" required />
 
+                        <label>Telefone de contato</label>
+                        <input name="contato_telefone" value="{local_telefone}" />
+
+                        <label>Site</label>
+                        <input name="site_url" value="{local_site}" placeholder="https://..." />
+
                         <div class="check-row">
                             <label class="check-label">
                                 <input type="checkbox" name="acessibilidade" value="1" {local_acessibilidade_checked} />
@@ -1834,6 +1879,8 @@ def render_tela_cadastro_manutencao(
             evento_nome = escape(evento.nome or "")
             evento_descricao = escape(evento.descricao or "")
             evento_porte = escape(evento.porte or "")
+            evento_telefone = escape(evento.contato_telefone or "")
+            evento_site = escape(evento.site_url or "")
             evento_tipo_evento = normalizar_tipo_evento(evento.tipo_evento)
             evento_options = "".join(
                 [
@@ -1872,6 +1919,12 @@ def render_tela_cadastro_manutencao(
 
                         <label>Porte</label>
                         <input name="porte" value="{evento_porte}" required />
+
+                        <label>Telefone de contato</label>
+                        <input name="contato_telefone" value="{evento_telefone}" />
+
+                        <label>Site</label>
+                        <input name="site_url" value="{evento_site}" placeholder="https://..." />
 
                         <label>Tipo de evento</label>
                         <select name="tipo_evento" required>
@@ -2001,6 +2054,12 @@ def render_tela_cadastro_manutencao(
                             <label>Longitude</label>
                             <input type="number" step="any" name="longitude" required />
 
+                            <label>Telefone de contato</label>
+                            <input name="contato_telefone" placeholder="(31) 99999-9999" />
+
+                            <label>Site</label>
+                            <input name="site_url" placeholder="https://..." />
+
                             <div class="check-row">
                                 <label class="check-label">
                                     <input type="checkbox" name="acessibilidade" value="1" />
@@ -2040,6 +2099,12 @@ def render_tela_cadastro_manutencao(
 
                             <label>Porte do evento</label>
                             <input name="porte" placeholder="Pequeno, Médio, Grande..." required />
+
+                            <label>Telefone de contato</label>
+                            <input name="contato_telefone" placeholder="(31) 99999-9999" />
+
+                            <label>Site</label>
+                            <input name="site_url" placeholder="https://..." />
 
                             <label>Tipo de evento</label>
                             <select name="tipo_evento" required>
@@ -2202,6 +2267,8 @@ def cadastrar_local(
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form("1"),
@@ -2219,6 +2286,8 @@ def cadastrar_local(
             tipo_evento=normalizar_tipo_evento(tipo_evento),
             latitude=latitude,
             longitude=longitude,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             acessibilidade=bool(acessibilidade),
             proximo_metro=bool(proximo_metro),
             restaurantes=bool(restaurantes),
@@ -2239,6 +2308,8 @@ def cadastrar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
@@ -2268,6 +2339,8 @@ def cadastrar_evento(
             data_fim=data_fim_dt,
             publico_estimado=publico_estimado,
             porte=porte,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             tipo_evento=normalizar_tipo_evento(tipo_evento),
             local_id=local_id,
         )
@@ -2288,6 +2361,8 @@ def editar_local(
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form(None),
@@ -2308,6 +2383,8 @@ def editar_local(
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
         local.latitude = latitude
         local.longitude = longitude
+        local.contato_telefone = (contato_telefone or "").strip()
+        local.site_url = (site_url or "").strip()
         local.acessibilidade = bool(acessibilidade)
         local.proximo_metro = bool(proximo_metro)
         local.restaurantes = bool(restaurantes)
@@ -2347,6 +2424,8 @@ def editar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
@@ -2379,6 +2458,8 @@ def editar_evento(
         evento.data_fim = data_fim_dt
         evento.publico_estimado = publico_estimado
         evento.porte = porte
+        evento.contato_telefone = (contato_telefone or "").strip()
+        evento.site_url = (site_url or "").strip()
         evento.tipo_evento = normalizar_tipo_evento(tipo_evento)
         evento.local_id = local_id
         db.commit()
@@ -2414,6 +2495,8 @@ def cadastrar_anunciante(
     endereco: str = Form(""),
     latitude: float = Form(0.0),
     longitude: float = Form(0.0),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     urlimagem: str = Form(""),
     datainicio: str = Form(""),
     datafim: str = Form(""),
@@ -2450,6 +2533,8 @@ def cadastrar_anunciante(
             endereco=endereco,
             latitude=latitude_geo,
             longitude=longitude_geo,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             urlimagem=urlimagem,
             datainicio=data_inicio_dt,
             datafim=data_fim_dt,
@@ -2470,6 +2555,8 @@ def editar_anunciante(
     endereco: str = Form(""),
     latitude: float = Form(0.0),
     longitude: float = Form(0.0),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     urlimagem: str = Form(""),
     datainicio: str = Form(""),
     datafim: str = Form(""),
@@ -2509,6 +2596,8 @@ def editar_anunciante(
         anunciante.endereco = endereco
         anunciante.latitude = latitude_geo
         anunciante.longitude = longitude_geo
+        anunciante.contato_telefone = (contato_telefone or "").strip()
+        anunciante.site_url = (site_url or "").strip()
         anunciante.urlimagem = urlimagem
         anunciante.datainicio = data_inicio_dt
         anunciante.datafim = data_fim_dt
@@ -2571,6 +2660,8 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
             anunciante_endereco = escape(anunciante.endereco or "")
             anunciante_latitude = anunciante.latitude or 0.0
             anunciante_longitude = anunciante.longitude or 0.0
+            anunciante_telefone = escape(anunciante.contato_telefone or "")
+            anunciante_site = _normalizar_site_url(anunciante.site_url or "")
             anunciante_urlimagem = escape(anunciante.urlimagem or "")
             anunciante_datainicio = anunciante.datainicio.isoformat() if anunciante.datainicio else ""
             anunciante_datafim = anunciante.datafim.isoformat() if anunciante.datafim else ""
@@ -2583,11 +2674,13 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                 <td>{anunciante_endereco}</td>
                 <td>{anunciante_latitude}</td>
                 <td>{anunciante_longitude}</td>
+                <td>{anunciante_telefone}</td>
+                <td>{f'<a href="{escape(anunciante_site)}" target="_blank">Site</a>' if anunciante_site else '-'}</td>
                 <td>{anunciante_datainicio}</td>
                 <td>{anunciante_datafim}</td>
                 <td><a href="{anunciante_urlimagem}" target="_blank">Ver</a></td>
                 <td>
-                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
+                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.contato_telefone or "")}, {json.dumps(anunciante.site_url or "")}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
                     <form method="post" action="/cadastro/anunciante/{anunciante_id}/excluir" style="display:inline;">
                         <button type="submit" onclick="return confirm('Tem certeza?')">Excluir</button>
                     </form>
@@ -2643,6 +2736,8 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                             <th>Endereço</th>
                             <th>Latitude</th>
                             <th>Longitude</th>
+                            <th>Telefone</th>
+                            <th>Site</th>
                             <th>Data Início</th>
                             <th>Data Fim</th>
                             <th>Imagem</th>
@@ -2678,6 +2773,14 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                         <div class="form-group">
                             <label for="longitude">Longitude</label>
                             <input id="longitude" type="number" name="longitude" step="0.000001" value="0.0" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="contato_telefone">Telefone de contato</label>
+                            <input id="contato_telefone" type="text" name="contato_telefone" />
+                        </div>
+                        <div class="form-group">
+                            <label for="site_url">Site</label>
+                            <input id="site_url" type="text" name="site_url" placeholder="https://..." />
                         </div>
                         <div class="form-group">
                             <label for="urlimagem">URL da Imagem</label>
@@ -2724,6 +2827,14 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                             <input id="edit_longitude" type="number" name="longitude" step="0.000001" readonly />
                         </div>
                         <div class="form-group">
+                            <label for="edit_contato_telefone">Telefone de contato</label>
+                            <input id="edit_contato_telefone" type="text" name="contato_telefone" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_site_url">Site</label>
+                            <input id="edit_site_url" type="text" name="site_url" placeholder="https://..." />
+                        </div>
+                        <div class="form-group">
                             <label for="edit_urlimagem">URL da Imagem</label>
                             <input id="edit_urlimagem" type="text" name="urlimagem" />
                         </div>
@@ -2755,17 +2866,21 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                     document.getElementById('endereco').value = '';
                     document.getElementById('latitude').value = '0.0';
                     document.getElementById('longitude').value = '0.0';
+                    document.getElementById('contato_telefone').value = '';
+                    document.getElementById('site_url').value = '';
                     document.getElementById('urlimagem').value = '';
                     document.getElementById('datainicio').value = '';
                     document.getElementById('datafim').value = '';
                 }}
 
-                function openEditModal(id, nome, tipo, endereco, latitude, longitude, urlimagem, datainicio, datafim) {{
+                function openEditModal(id, nome, tipo, endereco, latitude, longitude, contatoTelefone, siteUrl, urlimagem, datainicio, datafim) {{
                     document.getElementById('edit_nome').value = nome;
                     document.getElementById('edit_tipo').value = tipo;
                     document.getElementById('edit_endereco').value = endereco;
                     document.getElementById('edit_latitude').value = latitude;
                     document.getElementById('edit_longitude').value = longitude;
+                    document.getElementById('edit_contato_telefone').value = contatoTelefone || '';
+                    document.getElementById('edit_site_url').value = siteUrl || '';
                     document.getElementById('edit_urlimagem').value = urlimagem;
                     document.getElementById('edit_datainicio').value = datainicio || '';
                     document.getElementById('edit_datafim').value = datafim || '';
@@ -2832,6 +2947,8 @@ def mapa_locais(request: Request, _publico: bool = False):
             <b>{local.nome}</b><br>
             Endereço: {local.endereco}<br>
             Região: {local.regiao}<br>
+            {_telefone_html(local.contato_telefone)}
+            {_site_html(local.site_url)}
             Lat: {lat}, Lon: {lon}
             {link_rota_html(lat, lon, map_name, local.nome)}
             """
@@ -2972,7 +3089,9 @@ def mapa_eventos(request: Request, _publico: bool = False):
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
             Tipo: {evento.tipo_evento}<br>
-            Local: {evento.local.nome}
+            Local: {evento.local.nome}<br>
+            {_telefone_html(evento.contato_telefone)}
+            {_site_html(evento.site_url)}
             {link_rota_html(lat, lon, map_name, evento.local.nome)}
             """
             folium.Marker(
