@@ -742,6 +742,9 @@ if os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_CLIENT_SECRET"):
 
 
 def _provedores_oauth_disponiveis() -> list[str]:
+    if not USE_SOCIAL_LOGIN:
+        return []
+
     provedores = []
     for nome in ("google", "facebook", "apple"):
         if oauth.create_client(nome):
@@ -774,6 +777,7 @@ EMAILS_ADMIN = {
 }
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
+USE_SOCIAL_LOGIN = REQUIRE_LOGIN and os.getenv("USE_SOCIAL_LOGIN", "true").lower() not in ("false", "0", "no")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
@@ -994,11 +998,17 @@ def login_page(request: Request):
         )
 
     if not botoes_html:
-        botoes_html = (
-            '<div class="warn">Nenhum provedor OAuth configurado. '
-            'Defina variáveis GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET '
-            'ou APPLE_CLIENT_ID/SECRET.</div>'
-        )
+        if not USE_SOCIAL_LOGIN:
+            botoes_html = (
+                '<div class="warn">Login social desabilitado. '
+                'Defina USE_SOCIAL_LOGIN=true no arquivo .env para habilitar provedores sociais.</div>'
+            )
+        else:
+            botoes_html = (
+                '<div class="warn">Nenhum provedor OAuth configurado. '
+                'Defina variáveis GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET '
+                'ou APPLE_CLIENT_ID/SECRET.</div>'
+            )
 
     google_config_html = ""
     if "google" not in provedores:
