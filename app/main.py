@@ -347,17 +347,17 @@ def _normalizar_site_url(site_url: str) -> str:
 def _site_html(site_url: str) -> str:
     url = _normalizar_site_url(site_url)
     if not url:
-        return "Site: Não informado<br>"
-    return f'Site: <a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+        return ""
+    return f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
 
 
 def _site_html_rastreado(site_url: str, entidade_tipo: str, entidade_id: int) -> str:
     url = _normalizar_site_url(site_url)
     if not url:
-        return "Site: Não informado<br>"
+        return ""
     destino = quote_plus(url)
     href = f"/interacoes/site?entidade_tipo={quote_plus(entidade_tipo)}&entidade_id={entidade_id}&destino={destino}"
-    return f'Site: <a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+    return f'<a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
 
 
 def _telefone_html(telefone: str) -> str:
@@ -1474,7 +1474,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                             }}
                         }}
             </style>
-        <title>Configurações - Eventos BH</title>
+        <title>Configurações - Eventos</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
             .page {{ max-width: 740px; margin: 0 auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
@@ -1679,7 +1679,7 @@ def login_page(request: Request):
                             }}
                         }}
             </style>
-        <title>Login - Eventos BH</title>
+        <title>Login - Eventos</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
             .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
@@ -1705,7 +1705,7 @@ def login_page(request: Request):
         <div class="wrap">
             <div class="card">
                 <a class="home-link" href="/">Início</a>
-                <h1>Entrar no Eventos BH</h1>
+                <h1>Entrar no Eventos</h1>
                 <p>Use email ou CPF com senha. Se ainda não tiver cadastro, crie em poucos segundos.</p>
                 {erro_html}
                 <form method="post" action="/login/local">
@@ -1802,7 +1802,7 @@ def esqueci_senha_page(request: Request):
                             }}
                         }}
             </style>
-        <title>Redefinir senha - Eventos BH</title>
+        <title>Redefinir senha - Eventos</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
             .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
@@ -1884,7 +1884,7 @@ def cadastro_rapido_page(request: Request):
     <html>
     <head>
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Cadastro rápido - Eventos BH</title>
+        <title>Cadastro rápido - Eventos</title>
         <style>
             body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
             .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -2580,7 +2580,7 @@ def usuarios_page(request: Request, msg: Optional[str] = None):
                             }}
                         }}
             </style>
-            <title>Usuários - Eventos BH</title>
+            <title>Usuários - Eventos</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
                 .page {{ max-width: 980px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
