@@ -2105,7 +2105,7 @@ def home(request: Request):
     <body>
         <div class="page">
             <div class="top">
-                <h1>Eventos — {escape(label_loc)}</h1>
+                <h1>Eventos - {escape(label_loc)}</h1>
                 <span class="user">Conectado como: {user_name}</span>
                 <a class="logout" href="/logout">Sair</a>
             </div>
