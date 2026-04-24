@@ -2853,6 +2853,7 @@ def visualizacao_publica():
             .layout.retracted .sidebar {
                 transform: translateX(-100%);
                 opacity: 0;
+                visibility: hidden;
                 pointer-events: none;
             }
 
@@ -2895,6 +2896,9 @@ def visualizacao_publica():
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
+                min-height: 100vh;
+                position: relative;
+                z-index: 1;
             }
 
             .topbar {
@@ -2930,6 +2934,7 @@ def visualizacao_publica():
                 overflow: hidden;
                 box-shadow: var(--shadow);
                 min-height: 72vh;
+                height: calc(100vh - 96px);
             }
 
             iframe {
@@ -2956,6 +2961,10 @@ def visualizacao_publica():
                     grid-template-columns: 1fr;
                 }
 
+                .layout.retracted {
+                    grid-template-columns: 1fr;
+                }
+
                 .sidebar {
                     position: fixed;
                     top: 0;
@@ -2966,7 +2975,7 @@ def visualizacao_publica():
                 }
 
                 .layout.retracted .sidebar {
-                    transform: translateX(-100%);
+                    transform: translateX(-105%);
                 }
 
                 .content {
@@ -2974,7 +2983,8 @@ def visualizacao_publica():
                 }
 
                 .frame-wrap {
-                    min-height: calc(100vh - 92px);
+                    height: calc(100dvh - 96px);
+                    min-height: calc(100dvh - 96px);
                 }
             }
         </style>
