@@ -2994,7 +2994,7 @@ def visualizacao_publica():
             <aside id="sidebar" class="sidebar">
                 <div class="brand">Visualização Eventos BH</div>
                 <div class="subtitle">Mapa e calendário em modo rápido</div>
-                <button class="menu-btn" onclick="abrirConteudo('/public/mapa', 'Mapa de eventos')">Mapa</button>
+                <button class="menu-btn" onclick="abrirConteudo('/public/mapa', 'Mapa de eventos')">Mapa de Eventos</button>
                 <button class="menu-btn" onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais')">Mapa de locais</button>
                 <button class="menu-btn" onclick="abrirConteudo('/public/calendario', 'Calendário de eventos')">Calendário</button>
             </aside>
