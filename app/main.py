@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional, Anunciante, Usuario
+from .models import Evento, Local, Regional, Anunciante, Usuario, InteracaoClique
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import secrets
 import re
+from urllib.parse import quote_plus
 from pathlib import Path
 
 #para executar 
@@ -79,6 +80,10 @@ def garantir_colunas_locais():
                     "ALTER TABLE locais ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
                 )
             )
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE locais ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE locais ADD COLUMN site_url TEXT"))
         conn.execute(
             text(
                 "UPDATE locais SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
@@ -97,6 +102,10 @@ def garantir_colunas_eventos():
                     "ALTER TABLE eventos ADD COLUMN tipo_evento TEXT NOT NULL DEFAULT 'Negócios'"
                 )
             )
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN site_url TEXT"))
         conn.execute(
             text(
                 "UPDATE eventos SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
@@ -115,6 +124,10 @@ def garantir_colunas_anunciantes():
             conn.execute(text("ALTER TABLE anunciantes ADD COLUMN datafim DATE"))
         if "tipo" not in colunas:
             conn.execute(text("ALTER TABLE anunciantes ADD COLUMN tipo TEXT NOT NULL DEFAULT ''"))
+        if "contato_telefone" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN contato_telefone TEXT"))
+        if "site_url" not in colunas:
+            conn.execute(text("ALTER TABLE anunciantes ADD COLUMN site_url TEXT"))
         conn.execute(
             text("UPDATE anunciantes SET tipo = '' WHERE tipo IS NULL")
         )
@@ -184,6 +197,67 @@ def coordenadas_validas(latitude, longitude) -> bool:
     if math.isnan(lat) or math.isnan(lon):
         return False
     return -90 <= lat <= 90 and -180 <= lon <= 180
+
+
+def _normalizar_site_url(site_url: str) -> str:
+    url = (site_url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return f"https://{url}"
+
+
+def _site_html(site_url: str) -> str:
+    url = _normalizar_site_url(site_url)
+    if not url:
+        return "Site: Não informado<br>"
+    return f'Site: <a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+
+
+def _site_html_rastreado(site_url: str, entidade_tipo: str, entidade_id: int) -> str:
+    url = _normalizar_site_url(site_url)
+    if not url:
+        return "Site: Não informado<br>"
+    destino = quote_plus(url)
+    href = f"/interacoes/site?entidade_tipo={quote_plus(entidade_tipo)}&entidade_id={entidade_id}&destino={destino}"
+    return f'Site: <a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+
+
+def _telefone_html(telefone: str) -> str:
+    telefone_limpo = (telefone or "").strip()
+    if not telefone_limpo:
+        return "Telefone: Não informado<br>"
+    return f"Telefone: {escape(telefone_limpo)}<br>"
+
+
+def _registrar_interacao(entidade_tipo: str, entidade_id: int, acao: str) -> None:
+    tipo = (entidade_tipo or "").strip().lower()
+    acao_normalizada = (acao or "").strip().lower()
+    if tipo not in {"local", "evento", "anunciante"}:
+        return
+    if acao_normalizada not in {"visualizado", "acessado"}:
+        return
+    if not isinstance(entidade_id, int) or entidade_id <= 0:
+        return
+
+    hoje = datetime.now().date()
+    db: Session = SessionLocal()
+    try:
+        db.add(
+            InteracaoClique(
+                entidade_tipo=tipo,
+                entidade_id=entidade_id,
+                acao=acao_normalizada,
+                data_referencia=hoje,
+                criado_em=hoje,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def geocodificar_endereco(endereco: str) -> tuple[Optional[float], Optional[float]]:
@@ -260,13 +334,17 @@ def popup_anunciante_html(anunciante: Anunciante, map_name: str) -> str:
         )
 
     return (
+        f"<div data-track-entidade=\"anunciante\" data-track-id=\"{anunciante.id}\">"
         f"<b>Anunciante: {escape(anunciante.nome or '')}</b><br>"
         f"{tipo_html}"
         f"Endereço: {escape(anunciante.endereco or '')}<br>"
+        f"{_telefone_html(anunciante.contato_telefone)}"
+        f"{_site_html_rastreado(anunciante.site_url, 'anunciante', anunciante.id)}"
         f"{periodo}"
         f"Lat: {lat}, Lon: {lon}"
         f"{imagem_html}"
         f"{link_rota_html(lat, lon, map_name, anunciante.nome or 'Anunciante')}"
+        "</div>"
     )
 
 
@@ -624,7 +702,33 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             );
         }}
 
+        function registrarInteracao_{map_name}(entidadeTipo, entidadeId, acao) {{
+            const tipo = (entidadeTipo || '').toLowerCase();
+            const acaoNormalizada = (acao || '').toLowerCase();
+            if (!tipo || !entidadeId || !acaoNormalizada) return;
+            const url = `/interacoes/registrar?entidade_tipo=${{encodeURIComponent(tipo)}}&entidade_id=${{encodeURIComponent(entidadeId)}}&acao=${{encodeURIComponent(acaoNormalizada)}}`;
+            fetch(url, {{ method: 'GET', keepalive: true }}).catch(function() {{}});
+        }}
+
+        function configurarRastreioPopup_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.popupTrackingBound_{map_name}) return;
+            window.popupTrackingBound_{map_name} = true;
+
+            mapa.on('popupopen', function(ev) {{
+                const popupEl = ev && ev.popup && ev.popup.getElement ? ev.popup.getElement() : null;
+                if (!popupEl) return;
+                const trackEl = popupEl.querySelector('[data-track-entidade][data-track-id]');
+                if (!trackEl) return;
+
+                const entidadeTipo = trackEl.getAttribute('data-track-entidade');
+                const entidadeId = trackEl.getAttribute('data-track-id');
+                registrarInteracao_{map_name}(entidadeTipo, entidadeId, 'visualizado');
+            }});
+        }}
+
         setTimeout(adicionarControleLimparRota_{map_name}, 0);
+        setTimeout(configurarRastreioPopup_{map_name}, 0);
     </script>
     '''
 
@@ -918,6 +1022,104 @@ def _atualizar_variavel_env(chave: str, valor: str) -> None:
     ENV_FILE_PATH.write_text("\n".join(linhas) + "\n", encoding="utf-8")
 
 
+@app.get("/interacoes/registrar")
+def registrar_interacao_get(entidade_tipo: str, entidade_id: int, acao: str):
+    _registrar_interacao(entidade_tipo, entidade_id, acao)
+    return {"ok": True}
+
+
+@app.get("/interacoes/site")
+def registrar_e_redirecionar_site(entidade_tipo: str, entidade_id: int, destino: str):
+    _registrar_interacao(entidade_tipo, entidade_id, "acessado")
+    destino_normalizado = _normalizar_site_url(destino)
+    if not destino_normalizado:
+        return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=destino_normalizado, status_code=303)
+
+
+@app.get("/board-interacoes", response_class=HTMLResponse)
+def board_interacoes(request: Request):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        interacoes = db.query(InteracaoClique).order_by(InteracaoClique.data_referencia.desc()).all()
+
+        por_dia = {}
+        por_mes = {}
+        por_ano = {}
+        for item in interacoes:
+            dia = item.data_referencia.strftime("%Y-%m-%d")
+            mes = item.data_referencia.strftime("%Y-%m")
+            ano = item.data_referencia.strftime("%Y")
+            por_dia[dia] = por_dia.get(dia, 0) + 1
+            por_mes[mes] = por_mes.get(mes, 0) + 1
+            por_ano[ano] = por_ano.get(ano, 0) + 1
+
+        linhas_dia = "".join(
+            [f"<tr><td>{d}</td><td>{t}</td></tr>" for d, t in sorted(por_dia.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+        linhas_mes = "".join(
+            [f"<tr><td>{m}</td><td>{t}</td></tr>" for m, t in sorted(por_mes.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+        linhas_ano = "".join(
+            [f"<tr><td>{a}</td><td>{t}</td></tr>" for a, t in sorted(por_ano.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+
+        return f"""
+        <html>
+        <head>
+            <title>Board de Interações</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+                .page {{ max-width: 980px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+                h1 {{ margin-top: 0; color: #1f2937; }}
+                .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }}
+                .card {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }}
+                th {{ color: #111827; background: #f3f4f6; }}
+                a {{ color: #1f2937; text-decoration: none; font-weight: 700; }}
+                @media (max-width: 960px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <a href="/">← Voltar</a>
+                <h1>Board de interações</h1>
+                <div class="grid">
+                    <div class="card">
+                        <h3>Total por dia</h3>
+                        <table>
+                            <tr><th>Dia</th><th>Cliques</th></tr>
+                            {linhas_dia}
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>Total por mês</h3>
+                        <table>
+                            <tr><th>Mês</th><th>Cliques</th></tr>
+                            {linhas_mes}
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>Total por ano</h3>
+                        <table>
+                            <tr><th>Ano</th><th>Cliques</th></tr>
+                            {linhas_ano}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    finally:
+        db.close()
+
+
 @app.get("/configuracoes", response_class=HTMLResponse)
 def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     redirect = _redirect_se_nao_super_admin(request)
@@ -1081,6 +1283,8 @@ def login_page(request: Request):
         erro_html = '<div class="warn" style="background:#dcfce7;color:#166534;">Cadastro concluído. Faça login para continuar.</div>'
     elif msg == "email_ou_cpf_duplicado":
         erro_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Já existe usuário com este email ou CPF.</div>'
+    elif msg == "senha_redefinida":
+        erro_html = '<div class="warn" style="background:#dcfce7;color:#166534;">Senha redefinida com sucesso. Faça login com a nova senha.</div>'
 
     if not botoes_html and USE_SOCIAL_LOGIN:
         botoes_html = (
@@ -1124,6 +1328,8 @@ def login_page(request: Request):
             .label {{ display: block; font-weight: 700; margin: 10px 0 6px; color: #111827; }}
             .input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }}
             .help {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
+            .link-action {{ display: inline-block; margin: 8px 0 14px; color: #0f766e; font-weight: 700; text-decoration: none; }}
+            .link-action:hover {{ text-decoration: underline; }}
         </style>
     </head>
     <body>
@@ -1140,6 +1346,7 @@ def login_page(request: Request):
                     <input class="input" id="senha" name="senha" type="password" required />
                     <button class="btn btn-alt" type="submit">Entrar</button>
                 </form>
+                <a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>
                 <a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>
                 {social_html}
             </div>
@@ -1168,6 +1375,95 @@ def login_local(request: Request, identificador: str = Form(...), senha: str = F
 
         request.session["user"] = _usuario_para_sessao(usuario)
         return RedirectResponse(url="/", status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/esqueci-senha", response_class=HTMLResponse)
+def esqueci_senha_page(request: Request):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+
+    msg = request.query_params.get("msg")
+    msg_html = ""
+    if msg == "usuario_nao_encontrado":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Usuário não encontrado para o email/CPF informado.</div>'
+    elif msg == "senha_curta":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">A nova senha deve ter no mínimo 6 caracteres.</div>'
+    elif msg == "confirmacao_invalida":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">A confirmação da senha não confere.</div>'
+
+    return f"""
+    <html>
+    <head>
+        <title>Redefinir senha - Eventos BH</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
+            .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+            .card {{ width: 100%; max-width: 460px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            h1 {{ margin: 0 0 8px; color: #111827; }}
+            p {{ margin: 0 0 18px; color: #4b5563; }}
+            .label {{ display: block; font-weight: 700; margin: 10px 0 6px; color: #111827; }}
+            .input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }}
+            .btn {{ width: 100%; border: none; border-radius: 8px; padding: 11px 14px; font-weight: 700; color: #fff; background: #111827; cursor: pointer; margin-top: 8px; }}
+            .back {{ display: inline-block; margin-top: 12px; text-decoration: none; color: #1f2937; font-weight: 700; }}
+            .warn {{ background: #fef3c7; color: #92400e; border-radius: 8px; padding: 12px; font-size: 14px; margin-bottom: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="card">
+                <h1>Redefinir senha</h1>
+                <p>Informe seu email ou CPF e defina uma nova senha.</p>
+                {msg_html}
+                <form method="post" action="/esqueci-senha">
+                    <label class="label" for="identificador">Email ou CPF</label>
+                    <input class="input" id="identificador" name="identificador" required />
+                    <label class="label" for="nova_senha">Nova senha</label>
+                    <input class="input" id="nova_senha" name="nova_senha" type="password" minlength="6" required />
+                    <label class="label" for="confirmar_senha">Confirmar nova senha</label>
+                    <input class="input" id="confirmar_senha" name="confirmar_senha" type="password" minlength="6" required />
+                    <button class="btn" type="submit">Redefinir senha</button>
+                </form>
+                <a class="back" href="/login">Voltar para login</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/esqueci-senha")
+def esqueci_senha(
+    request: Request,
+    identificador: str = Form(...),
+    nova_senha: str = Form(...),
+    confirmar_senha: str = Form(...),
+):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+
+    if len((nova_senha or "")) < 6:
+        return RedirectResponse(url="/esqueci-senha?msg=senha_curta", status_code=303)
+    if nova_senha != confirmar_senha:
+        return RedirectResponse(url="/esqueci-senha?msg=confirmacao_invalida", status_code=303)
+
+    identificador_limpo = (identificador or "").strip().lower()
+    cpf_limpo = _normalizar_cpf(identificador)
+
+    db: Session = SessionLocal()
+    try:
+        usuario = db.query(Usuario).filter(Usuario.email.ilike(identificador_limpo)).first()
+        if not usuario and cpf_limpo:
+            usuario = db.query(Usuario).filter(Usuario.cpf == cpf_limpo).first()
+        if not usuario:
+            return RedirectResponse(url="/esqueci-senha?msg=usuario_nao_encontrado", status_code=303)
+
+        usuario.senha_hash = _hash_senha(nova_senha)
+        db.commit()
+        return RedirectResponse(url="/login?msg=senha_redefinida", status_code=303)
     finally:
         db.close()
 
@@ -1375,6 +1671,7 @@ def home(request: Request):
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
                 {'<a class="card" href="/usuarios"><h2>Usuários</h2><p>Atualize seu cadastro completo e gerencie os usuários da plataforma.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/board-interacoes"><h2>Board de Interações</h2><p>Acompanhe cliques de visualização e acesso por dia, mês e ano.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
@@ -1671,6 +1968,8 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_telefone = escape(local.contato_telefone or "")
+            local_site = escape(local.site_url or "")
             local_tipo_evento = normalizar_tipo_evento(local.tipo_evento)
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
@@ -1711,6 +2010,12 @@ def render_tela_cadastro_manutencao(
                         <label>Longitude</label>
                         <input type="number" step="any" name="longitude" value="{local.longitude}" required />
 
+                        <label>Telefone de contato</label>
+                        <input name="contato_telefone" value="{local_telefone}" />
+
+                        <label>Site</label>
+                        <input name="site_url" value="{local_site}" placeholder="https://..." />
+
                         <div class="check-row">
                             <label class="check-label">
                                 <input type="checkbox" name="acessibilidade" value="1" {local_acessibilidade_checked} />
@@ -1740,6 +2045,8 @@ def render_tela_cadastro_manutencao(
             evento_nome = escape(evento.nome or "")
             evento_descricao = escape(evento.descricao or "")
             evento_porte = escape(evento.porte or "")
+            evento_telefone = escape(evento.contato_telefone or "")
+            evento_site = escape(evento.site_url or "")
             evento_tipo_evento = normalizar_tipo_evento(evento.tipo_evento)
             evento_options = "".join(
                 [
@@ -1778,6 +2085,12 @@ def render_tela_cadastro_manutencao(
 
                         <label>Porte</label>
                         <input name="porte" value="{evento_porte}" required />
+
+                        <label>Telefone de contato</label>
+                        <input name="contato_telefone" value="{evento_telefone}" />
+
+                        <label>Site</label>
+                        <input name="site_url" value="{evento_site}" placeholder="https://..." />
 
                         <label>Tipo de evento</label>
                         <select name="tipo_evento" required>
@@ -1907,6 +2220,12 @@ def render_tela_cadastro_manutencao(
                             <label>Longitude</label>
                             <input type="number" step="any" name="longitude" required />
 
+                            <label>Telefone de contato</label>
+                            <input name="contato_telefone" placeholder="(31) 99999-9999" />
+
+                            <label>Site</label>
+                            <input name="site_url" placeholder="https://..." />
+
                             <div class="check-row">
                                 <label class="check-label">
                                     <input type="checkbox" name="acessibilidade" value="1" />
@@ -1946,6 +2265,12 @@ def render_tela_cadastro_manutencao(
 
                             <label>Porte do evento</label>
                             <input name="porte" placeholder="Pequeno, Médio, Grande..." required />
+
+                            <label>Telefone de contato</label>
+                            <input name="contato_telefone" placeholder="(31) 99999-9999" />
+
+                            <label>Site</label>
+                            <input name="site_url" placeholder="https://..." />
 
                             <label>Tipo de evento</label>
                             <select name="tipo_evento" required>
@@ -2108,6 +2433,8 @@ def cadastrar_local(
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form("1"),
@@ -2125,6 +2452,8 @@ def cadastrar_local(
             tipo_evento=normalizar_tipo_evento(tipo_evento),
             latitude=latitude,
             longitude=longitude,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             acessibilidade=bool(acessibilidade),
             proximo_metro=bool(proximo_metro),
             restaurantes=bool(restaurantes),
@@ -2145,6 +2474,8 @@ def cadastrar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
@@ -2174,6 +2505,8 @@ def cadastrar_evento(
             data_fim=data_fim_dt,
             publico_estimado=publico_estimado,
             porte=porte,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             tipo_evento=normalizar_tipo_evento(tipo_evento),
             local_id=local_id,
         )
@@ -2194,6 +2527,8 @@ def editar_local(
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
     proximo_metro: Optional[str] = Form(None),
     restaurantes: Optional[str] = Form(None),
@@ -2214,6 +2549,8 @@ def editar_local(
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
         local.latitude = latitude
         local.longitude = longitude
+        local.contato_telefone = (contato_telefone or "").strip()
+        local.site_url = (site_url or "").strip()
         local.acessibilidade = bool(acessibilidade)
         local.proximo_metro = bool(proximo_metro)
         local.restaurantes = bool(restaurantes)
@@ -2253,6 +2590,8 @@ def editar_evento(
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     tipo_evento: str = Form(...),
     local_id: int = Form(...),
 ):
@@ -2285,6 +2624,8 @@ def editar_evento(
         evento.data_fim = data_fim_dt
         evento.publico_estimado = publico_estimado
         evento.porte = porte
+        evento.contato_telefone = (contato_telefone or "").strip()
+        evento.site_url = (site_url or "").strip()
         evento.tipo_evento = normalizar_tipo_evento(tipo_evento)
         evento.local_id = local_id
         db.commit()
@@ -2320,6 +2661,8 @@ def cadastrar_anunciante(
     endereco: str = Form(""),
     latitude: float = Form(0.0),
     longitude: float = Form(0.0),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     urlimagem: str = Form(""),
     datainicio: str = Form(""),
     datafim: str = Form(""),
@@ -2356,6 +2699,8 @@ def cadastrar_anunciante(
             endereco=endereco,
             latitude=latitude_geo,
             longitude=longitude_geo,
+            contato_telefone=(contato_telefone or "").strip(),
+            site_url=(site_url or "").strip(),
             urlimagem=urlimagem,
             datainicio=data_inicio_dt,
             datafim=data_fim_dt,
@@ -2376,6 +2721,8 @@ def editar_anunciante(
     endereco: str = Form(""),
     latitude: float = Form(0.0),
     longitude: float = Form(0.0),
+    contato_telefone: str = Form(""),
+    site_url: str = Form(""),
     urlimagem: str = Form(""),
     datainicio: str = Form(""),
     datafim: str = Form(""),
@@ -2415,6 +2762,8 @@ def editar_anunciante(
         anunciante.endereco = endereco
         anunciante.latitude = latitude_geo
         anunciante.longitude = longitude_geo
+        anunciante.contato_telefone = (contato_telefone or "").strip()
+        anunciante.site_url = (site_url or "").strip()
         anunciante.urlimagem = urlimagem
         anunciante.datainicio = data_inicio_dt
         anunciante.datafim = data_fim_dt
@@ -2477,6 +2826,8 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
             anunciante_endereco = escape(anunciante.endereco or "")
             anunciante_latitude = anunciante.latitude or 0.0
             anunciante_longitude = anunciante.longitude or 0.0
+            anunciante_telefone = escape(anunciante.contato_telefone or "")
+            anunciante_site = _normalizar_site_url(anunciante.site_url or "")
             anunciante_urlimagem = escape(anunciante.urlimagem or "")
             anunciante_datainicio = anunciante.datainicio.isoformat() if anunciante.datainicio else ""
             anunciante_datafim = anunciante.datafim.isoformat() if anunciante.datafim else ""
@@ -2489,11 +2840,13 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                 <td>{anunciante_endereco}</td>
                 <td>{anunciante_latitude}</td>
                 <td>{anunciante_longitude}</td>
+                <td>{anunciante_telefone}</td>
+                <td>{f'<a href="{escape(anunciante_site)}" target="_blank">Site</a>' if anunciante_site else '-'}</td>
                 <td>{anunciante_datainicio}</td>
                 <td>{anunciante_datafim}</td>
                 <td><a href="{anunciante_urlimagem}" target="_blank">Ver</a></td>
                 <td>
-                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
+                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.contato_telefone or "")}, {json.dumps(anunciante.site_url or "")}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
                     <form method="post" action="/cadastro/anunciante/{anunciante_id}/excluir" style="display:inline;">
                         <button type="submit" onclick="return confirm('Tem certeza?')">Excluir</button>
                     </form>
@@ -2549,6 +2902,8 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                             <th>Endereço</th>
                             <th>Latitude</th>
                             <th>Longitude</th>
+                            <th>Telefone</th>
+                            <th>Site</th>
                             <th>Data Início</th>
                             <th>Data Fim</th>
                             <th>Imagem</th>
@@ -2584,6 +2939,14 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                         <div class="form-group">
                             <label for="longitude">Longitude</label>
                             <input id="longitude" type="number" name="longitude" step="0.000001" value="0.0" readonly />
+                        </div>
+                        <div class="form-group">
+                            <label for="contato_telefone">Telefone de contato</label>
+                            <input id="contato_telefone" type="text" name="contato_telefone" />
+                        </div>
+                        <div class="form-group">
+                            <label for="site_url">Site</label>
+                            <input id="site_url" type="text" name="site_url" placeholder="https://..." />
                         </div>
                         <div class="form-group">
                             <label for="urlimagem">URL da Imagem</label>
@@ -2630,6 +2993,14 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                             <input id="edit_longitude" type="number" name="longitude" step="0.000001" readonly />
                         </div>
                         <div class="form-group">
+                            <label for="edit_contato_telefone">Telefone de contato</label>
+                            <input id="edit_contato_telefone" type="text" name="contato_telefone" />
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_site_url">Site</label>
+                            <input id="edit_site_url" type="text" name="site_url" placeholder="https://..." />
+                        </div>
+                        <div class="form-group">
                             <label for="edit_urlimagem">URL da Imagem</label>
                             <input id="edit_urlimagem" type="text" name="urlimagem" />
                         </div>
@@ -2661,17 +3032,21 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                     document.getElementById('endereco').value = '';
                     document.getElementById('latitude').value = '0.0';
                     document.getElementById('longitude').value = '0.0';
+                    document.getElementById('contato_telefone').value = '';
+                    document.getElementById('site_url').value = '';
                     document.getElementById('urlimagem').value = '';
                     document.getElementById('datainicio').value = '';
                     document.getElementById('datafim').value = '';
                 }}
 
-                function openEditModal(id, nome, tipo, endereco, latitude, longitude, urlimagem, datainicio, datafim) {{
+                function openEditModal(id, nome, tipo, endereco, latitude, longitude, contatoTelefone, siteUrl, urlimagem, datainicio, datafim) {{
                     document.getElementById('edit_nome').value = nome;
                     document.getElementById('edit_tipo').value = tipo;
                     document.getElementById('edit_endereco').value = endereco;
                     document.getElementById('edit_latitude').value = latitude;
                     document.getElementById('edit_longitude').value = longitude;
+                    document.getElementById('edit_contato_telefone').value = contatoTelefone || '';
+                    document.getElementById('edit_site_url').value = siteUrl || '';
                     document.getElementById('edit_urlimagem').value = urlimagem;
                     document.getElementById('edit_datainicio').value = datainicio || '';
                     document.getElementById('edit_datafim').value = datafim || '';
@@ -2735,11 +3110,15 @@ def mapa_locais(request: Request, _publico: bool = False):
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
+            <div data-track-entidade="local" data-track-id="{local.id}">
             <b>{local.nome}</b><br>
             Endereço: {local.endereco}<br>
             Região: {local.regiao}<br>
+            {_telefone_html(local.contato_telefone)}
+            {_site_html_rastreado(local.site_url, 'local', local.id)}
             Lat: {lat}, Lon: {lon}
             {link_rota_html(lat, lon, map_name, local.nome)}
+            </div>
             """
             folium.Marker(
                 location=[lat, lon],
@@ -2872,14 +3251,18 @@ def mapa_eventos(request: Request, _publico: bool = False):
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
+            <div data-track-entidade="evento" data-track-id="{evento.id}">
             <b>{evento.nome}</b><br>
             Descrição: {evento.descricao}<br>
             Data: {evento.data_inicio} a {evento.data_fim}<br>
             Público: {evento.publico_estimado}<br>
             Porte: {evento.porte}<br>
             Tipo: {evento.tipo_evento}<br>
-            Local: {evento.local.nome}
+            Local: {evento.local.nome}<br>
+            {_telefone_html(evento.contato_telefone)}
+            {_site_html_rastreado(evento.site_url, 'evento', evento.id)}
             {link_rota_html(lat, lon, map_name, evento.local.nome)}
+            </div>
             """
             folium.Marker(
                 location=[lat, lon],
