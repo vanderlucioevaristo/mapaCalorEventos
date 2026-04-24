@@ -55,3 +55,17 @@ class Anunciante(Base):
     urlimagem = Column(String)
     datainicio = Column(Date)
     datafim = Column(Date)
+
+
+class Usuario(Base):
+    __tablename__ = "usuarios"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    cpf = Column(String, unique=True, nullable=False)
+    senha_hash = Column(String, nullable=False)
+    role = Column(String, default="admin", nullable=False)
+    foto_url = Column(String)
+    telefone = Column(String)
+    endereco = Column(String)
