@@ -75,3 +75,14 @@ class Usuario(Base):
     foto_url = Column(String)
     telefone = Column(String)
     endereco = Column(String)
+
+
+class InteracaoClique(Base):
+    __tablename__ = "interacoes_cliques"
+
+    id = Column(Integer, primary_key=True)
+    entidade_tipo = Column(String, nullable=False)
+    entidade_id = Column(Integer, nullable=False)
+    acao = Column(String, nullable=False)
+    data_referencia = Column(Date, nullable=False)
+    criado_em = Column(Date, nullable=False)

@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional, Anunciante, Usuario
+from .models import Evento, Local, Regional, Anunciante, Usuario, InteracaoClique
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import secrets
 import re
+from urllib.parse import quote_plus
 from pathlib import Path
 
 #para executar 
@@ -214,11 +215,49 @@ def _site_html(site_url: str) -> str:
     return f'Site: <a href="{escape(url)}" target="_blank" rel="noopener noreferrer">Site</a><br>'
 
 
+def _site_html_rastreado(site_url: str, entidade_tipo: str, entidade_id: int) -> str:
+    url = _normalizar_site_url(site_url)
+    if not url:
+        return "Site: Não informado<br>"
+    destino = quote_plus(url)
+    href = f"/interacoes/site?entidade_tipo={quote_plus(entidade_tipo)}&entidade_id={entidade_id}&destino={destino}"
+    return f'Site: <a href="{href}" target="_blank" rel="noopener noreferrer">Site</a><br>'
+
+
 def _telefone_html(telefone: str) -> str:
     telefone_limpo = (telefone or "").strip()
     if not telefone_limpo:
         return "Telefone: Não informado<br>"
     return f"Telefone: {escape(telefone_limpo)}<br>"
+
+
+def _registrar_interacao(entidade_tipo: str, entidade_id: int, acao: str) -> None:
+    tipo = (entidade_tipo or "").strip().lower()
+    acao_normalizada = (acao or "").strip().lower()
+    if tipo not in {"local", "evento", "anunciante"}:
+        return
+    if acao_normalizada not in {"visualizado", "acessado"}:
+        return
+    if not isinstance(entidade_id, int) or entidade_id <= 0:
+        return
+
+    hoje = datetime.now().date()
+    db: Session = SessionLocal()
+    try:
+        db.add(
+            InteracaoClique(
+                entidade_tipo=tipo,
+                entidade_id=entidade_id,
+                acao=acao_normalizada,
+                data_referencia=hoje,
+                criado_em=hoje,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def geocodificar_endereco(endereco: str) -> tuple[Optional[float], Optional[float]]:
@@ -295,15 +334,17 @@ def popup_anunciante_html(anunciante: Anunciante, map_name: str) -> str:
         )
 
     return (
+        f"<div data-track-entidade=\"anunciante\" data-track-id=\"{anunciante.id}\">"
         f"<b>Anunciante: {escape(anunciante.nome or '')}</b><br>"
         f"{tipo_html}"
         f"Endereço: {escape(anunciante.endereco or '')}<br>"
         f"{_telefone_html(anunciante.contato_telefone)}"
-        f"{_site_html(anunciante.site_url)}"
+        f"{_site_html_rastreado(anunciante.site_url, 'anunciante', anunciante.id)}"
         f"{periodo}"
         f"Lat: {lat}, Lon: {lon}"
         f"{imagem_html}"
         f"{link_rota_html(lat, lon, map_name, anunciante.nome or 'Anunciante')}"
+        "</div>"
     )
 
 
@@ -661,7 +702,33 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             );
         }}
 
+        function registrarInteracao_{map_name}(entidadeTipo, entidadeId, acao) {{
+            const tipo = (entidadeTipo || '').toLowerCase();
+            const acaoNormalizada = (acao || '').toLowerCase();
+            if (!tipo || !entidadeId || !acaoNormalizada) return;
+            const url = `/interacoes/registrar?entidade_tipo=${{encodeURIComponent(tipo)}}&entidade_id=${{encodeURIComponent(entidadeId)}}&acao=${{encodeURIComponent(acaoNormalizada)}}`;
+            fetch(url, {{ method: 'GET', keepalive: true }}).catch(function() {{}});
+        }}
+
+        function configurarRastreioPopup_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.popupTrackingBound_{map_name}) return;
+            window.popupTrackingBound_{map_name} = true;
+
+            mapa.on('popupopen', function(ev) {{
+                const popupEl = ev && ev.popup && ev.popup.getElement ? ev.popup.getElement() : null;
+                if (!popupEl) return;
+                const trackEl = popupEl.querySelector('[data-track-entidade][data-track-id]');
+                if (!trackEl) return;
+
+                const entidadeTipo = trackEl.getAttribute('data-track-entidade');
+                const entidadeId = trackEl.getAttribute('data-track-id');
+                registrarInteracao_{map_name}(entidadeTipo, entidadeId, 'visualizado');
+            }});
+        }}
+
         setTimeout(adicionarControleLimparRota_{map_name}, 0);
+        setTimeout(configurarRastreioPopup_{map_name}, 0);
     </script>
     '''
 
@@ -953,6 +1020,104 @@ def _atualizar_variavel_env(chave: str, valor: str) -> None:
         linhas.append(f"{chave}={valor}")
 
     ENV_FILE_PATH.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+
+
+@app.get("/interacoes/registrar")
+def registrar_interacao_get(entidade_tipo: str, entidade_id: int, acao: str):
+    _registrar_interacao(entidade_tipo, entidade_id, acao)
+    return {"ok": True}
+
+
+@app.get("/interacoes/site")
+def registrar_e_redirecionar_site(entidade_tipo: str, entidade_id: int, destino: str):
+    _registrar_interacao(entidade_tipo, entidade_id, "acessado")
+    destino_normalizado = _normalizar_site_url(destino)
+    if not destino_normalizado:
+        return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=destino_normalizado, status_code=303)
+
+
+@app.get("/board-interacoes", response_class=HTMLResponse)
+def board_interacoes(request: Request):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        interacoes = db.query(InteracaoClique).order_by(InteracaoClique.data_referencia.desc()).all()
+
+        por_dia = {}
+        por_mes = {}
+        por_ano = {}
+        for item in interacoes:
+            dia = item.data_referencia.strftime("%Y-%m-%d")
+            mes = item.data_referencia.strftime("%Y-%m")
+            ano = item.data_referencia.strftime("%Y")
+            por_dia[dia] = por_dia.get(dia, 0) + 1
+            por_mes[mes] = por_mes.get(mes, 0) + 1
+            por_ano[ano] = por_ano.get(ano, 0) + 1
+
+        linhas_dia = "".join(
+            [f"<tr><td>{d}</td><td>{t}</td></tr>" for d, t in sorted(por_dia.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+        linhas_mes = "".join(
+            [f"<tr><td>{m}</td><td>{t}</td></tr>" for m, t in sorted(por_mes.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+        linhas_ano = "".join(
+            [f"<tr><td>{a}</td><td>{t}</td></tr>" for a, t in sorted(por_ano.items(), reverse=True)]
+        ) or '<tr><td colspan="2">Sem dados</td></tr>'
+
+        return f"""
+        <html>
+        <head>
+            <title>Board de Interações</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
+                .page {{ max-width: 980px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 14px 36px rgba(0,0,0,.08); }}
+                h1 {{ margin-top: 0; color: #1f2937; }}
+                .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }}
+                .card {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }}
+                th {{ color: #111827; background: #f3f4f6; }}
+                a {{ color: #1f2937; text-decoration: none; font-weight: 700; }}
+                @media (max-width: 960px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <a href="/">← Voltar</a>
+                <h1>Board de interações</h1>
+                <div class="grid">
+                    <div class="card">
+                        <h3>Total por dia</h3>
+                        <table>
+                            <tr><th>Dia</th><th>Cliques</th></tr>
+                            {linhas_dia}
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>Total por mês</h3>
+                        <table>
+                            <tr><th>Mês</th><th>Cliques</th></tr>
+                            {linhas_mes}
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>Total por ano</h3>
+                        <table>
+                            <tr><th>Ano</th><th>Cliques</th></tr>
+                            {linhas_ano}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    finally:
+        db.close()
 
 
 @app.get("/configuracoes", response_class=HTMLResponse)
@@ -1506,6 +1671,7 @@ def home(request: Request):
                     <p>Veja os eventos organizados por local e mês em um calendário compacto e colorido.</p>
                 </a>
                 {'<a class="card" href="/usuarios"><h2>Usuários</h2><p>Atualize seu cadastro completo e gerencie os usuários da plataforma.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/board-interacoes"><h2>Board de Interações</h2><p>Acompanhe cliques de visualização e acesso por dia, mês e ano.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
@@ -2944,13 +3110,15 @@ def mapa_locais(request: Request, _publico: bool = False):
             cor = cor_regional(local.regiao)
             tooltip_text = f"{local.nome} — {local.regiao}"
             popup_text = f"""
+            <div data-track-entidade="local" data-track-id="{local.id}">
             <b>{local.nome}</b><br>
             Endereço: {local.endereco}<br>
             Região: {local.regiao}<br>
             {_telefone_html(local.contato_telefone)}
-            {_site_html(local.site_url)}
+            {_site_html_rastreado(local.site_url, 'local', local.id)}
             Lat: {lat}, Lon: {lon}
             {link_rota_html(lat, lon, map_name, local.nome)}
+            </div>
             """
             folium.Marker(
                 location=[lat, lon],
@@ -3083,6 +3251,7 @@ def mapa_eventos(request: Request, _publico: bool = False):
             cor = cor_regional(evento.local.regiao)
             tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
             popup_text = f"""
+            <div data-track-entidade="evento" data-track-id="{evento.id}">
             <b>{evento.nome}</b><br>
             Descrição: {evento.descricao}<br>
             Data: {evento.data_inicio} a {evento.data_fim}<br>
@@ -3091,8 +3260,9 @@ def mapa_eventos(request: Request, _publico: bool = False):
             Tipo: {evento.tipo_evento}<br>
             Local: {evento.local.nome}<br>
             {_telefone_html(evento.contato_telefone)}
-            {_site_html(evento.site_url)}
+            {_site_html_rastreado(evento.site_url, 'evento', evento.id)}
             {link_rota_html(lat, lon, map_name, evento.local.nome)}
+            </div>
             """
             folium.Marker(
                 location=[lat, lon],
