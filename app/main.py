@@ -3,7 +3,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
-from .models import Evento, Local, Regional, Anunciante, Usuario, InteracaoClique
+from .models import (
+    Evento,
+    Local,
+    Regional,
+    Anunciante,
+    Usuario,
+    InteracaoClique,
+    Estado,
+    Municipio,
+)
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -65,6 +74,9 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 Base.metadata.create_all(bind=engine)
 
 TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo"]
+ESTADO_PADRAO_NOME = "Minas Gerais"
+ESTADO_PADRAO_SIGLA = "MG"
+MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
 
 
 def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
@@ -106,6 +118,8 @@ def garantir_colunas_locais():
             conn.execute(text("ALTER TABLE locais ADD COLUMN contato_telefone TEXT"))
         if "site_url" not in colunas:
             conn.execute(text("ALTER TABLE locais ADD COLUMN site_url TEXT"))
+        if "municipio_id" not in colunas:
+            conn.execute(text("ALTER TABLE locais ADD COLUMN municipio_id INTEGER"))
         conn.execute(
             text(
                 "UPDATE locais SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
@@ -177,6 +191,36 @@ garantir_colunas_locais()
 garantir_colunas_eventos()
 garantir_colunas_anunciantes()
 garantir_colunas_usuarios()
+
+
+def seed_localidades_padrao():
+    db: Session = SessionLocal()
+    try:
+        estado = db.query(Estado).filter(Estado.nome == ESTADO_PADRAO_NOME).first()
+        if not estado:
+            estado = Estado(nome=ESTADO_PADRAO_NOME, sigla=ESTADO_PADRAO_SIGLA)
+            db.add(estado)
+            db.flush()
+
+        municipio = (
+            db.query(Municipio)
+            .filter(Municipio.nome == MUNICIPIO_PADRAO_NOME, Municipio.estado_id == estado.id)
+            .first()
+        )
+        if not municipio:
+            municipio = Municipio(nome=MUNICIPIO_PADRAO_NOME, estado_id=estado.id)
+            db.add(municipio)
+            db.flush()
+
+        db.query(Local).filter(Local.municipio_id.is_(None)).update(
+            {Local.municipio_id: municipio.id}, synchronize_session=False
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+seed_localidades_padrao()
 
 REGIONAIS_PADRAO = [
     "Barreiro", "Centro-Sul", "Leste", "Nordeste", "Noroeste", "Norte", "Oeste", "Pampulha", "Sul", "Venda Nova"
@@ -943,6 +987,59 @@ def _usuario_atual(request: Request) -> dict:
     if not REQUIRE_LOGIN:
         return request.session.get("user") or USUARIO_MESTRE
     return request.session.get("user") or {}
+
+
+def _chaves_localidade(_publico: bool = False) -> tuple[str, str]:
+    if _publico:
+        return ("public_estado_id", "public_municipio_id")
+    return ("admin_estado_id", "admin_municipio_id")
+
+
+def _definir_localidade_sessao(
+    request: Request,
+    estado_id: int,
+    municipio_id: int,
+    _publico: bool = False,
+) -> None:
+    chave_estado, chave_municipio = _chaves_localidade(_publico)
+    request.session[chave_estado] = int(estado_id)
+    request.session[chave_municipio] = int(municipio_id)
+
+
+def _obter_localidade_sessao(request: Request, _publico: bool = False) -> tuple[Optional[int], Optional[int]]:
+    chave_estado, chave_municipio = _chaves_localidade(_publico)
+    estado_id = request.session.get(chave_estado)
+    municipio_id = request.session.get(chave_municipio)
+    try:
+        estado_id = int(estado_id) if estado_id is not None else None
+        municipio_id = int(municipio_id) if municipio_id is not None else None
+    except (TypeError, ValueError):
+        return (None, None)
+    return (estado_id, municipio_id)
+
+
+def _localidade_valida(db: Session, estado_id: int, municipio_id: int) -> bool:
+    municipio = db.query(Municipio).filter(Municipio.id == municipio_id).first()
+    if not municipio:
+        return False
+    return municipio.estado_id == estado_id
+
+
+def _redirect_se_localidade_nao_definida(request: Request, _publico: bool = False):
+    estado_id, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+    if not estado_id or not municipio_id:
+        destino = "/public/localidade" if _publico else "/localidade"
+        return RedirectResponse(url=destino, status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        if not _localidade_valida(db, estado_id, municipio_id):
+            destino = "/public/localidade" if _publico else "/localidade"
+            return RedirectResponse(url=destino, status_code=303)
+    finally:
+        db.close()
+
+    return None
 
 
 def _normalizar_cpf(cpf: str) -> str:
@@ -1857,6 +1954,10 @@ def home(request: Request):
     if redirect:
         return redirect
 
+    redirect_localidade = _redirect_se_localidade_nao_definida(request, _publico=False)
+    if redirect_localidade:
+        return redirect_localidade
+
     user = _usuario_atual(request)
     user_name = escape(user.get("name") or "Usuário")
     acesso_negado = request.query_params.get("acesso") == "negado"
@@ -1866,6 +1967,28 @@ def home(request: Request):
     ) if acesso_negado else ""
     is_admin = _eh_admin_ou_super_admin(user)
     is_super_admin = _eh_super_admin(user)
+
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = db.query(Municipio).join(Estado).order_by(Estado.nome, Municipio.nome).all()
+    finally:
+        db.close()
+
+    estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=False)
+    estados_options = "".join(
+        [
+            f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
+            for e in estados
+        ]
+    )
+    municipios_options = "".join(
+        [
+            f'<option value="{m.id}" data-estado-id="{m.estado_id}" {"selected" if m.id == municipio_sel else ""}>{escape(m.nome)}</option>'
+            for m in municipios
+        ]
+    )
+
     return f"""
     <html>
     <head>
@@ -1902,6 +2025,10 @@ def home(request: Request):
             .card h2 {{ margin: 0 0 10px; font-size: 22px; }}
             .card p {{ margin: 0; color: #374151; }}
             .footer {{ margin-top: 32px; font-size: 14px; color: #6b7280; }}
+            .localidade-form {{ margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }}
+            .localidade-form label {{ display: block; font-size: 12px; color: #374151; margin-bottom: 4px; font-weight: 700; }}
+            .localidade-form select {{ width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }}
+            .localidade-form button {{ border: none; border-radius: 8px; background: #0f766e; color: #fff; padding: 9px 12px; font-weight: 700; cursor: pointer; }}
         </style>
     </head>
     <body>
@@ -1911,6 +2038,22 @@ def home(request: Request):
                 <span class="user">Conectado como: {user_name}</span>
                 <a class="logout" href="/logout">Sair</a>
             </div>
+            <form class="localidade-form" method="post" action="/localidade">
+                <input type="hidden" name="next" value="/" />
+                <div>
+                    <label for="estado_id">Estado atual</label>
+                    <select id="estado_id" name="estado_id" onchange="filtrarMunicipios('estado_id','municipio_id')" required>
+                        {estados_options}
+                    </select>
+                </div>
+                <div>
+                    <label for="municipio_id">Município atual</label>
+                    <select id="municipio_id" name="municipio_id" required>
+                        {municipios_options}
+                    </select>
+                </div>
+                <button type="submit">Mudar localidade</button>
+            </form>
             <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             {aviso_acesso_html}
             <div class="menu">
@@ -1930,11 +2073,30 @@ def home(request: Request):
                 {'<a class="card" href="/board-interacoes"><h2>Board de Interações</h2><p>Acompanhe cliques de visualização e acesso por dia, mês e ano.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/anunciantes"><h2>Anunciantes</h2><p>Gerencie os anunciantes cadastrados com suas informações de localização e imagens.</p></a>' if is_super_admin else ''}
                 {'<a class="card" href="/configuracoes"><h2>Configurações</h2><p>Altere parâmetros globais de exibição, como logo e URL.</p></a>' if is_super_admin else ''}
+                {'<a class="card" href="/estados"><h2>Cadastro de Estados</h2><p>Cadastre estados para habilitar novas localidades de visualização.</p></a>' if is_admin else ''}
+                {'<a class="card" href="/municipios"><h2>Cadastro de Municípios</h2><p>Cadastre municípios vinculados aos estados disponíveis.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/cadastro"><h2>Cadastrar Evento/Local</h2><p>Inclua novos locais de execução e novos eventos diretamente pela tela.</p></a>' if is_admin else ''}
                 {'<a class="card" href="/manutencao"><h2>Manutenção</h2><p>Edite ou exclua locais e eventos já cadastrados em uma tela dedicada.</p></a>' if is_admin else ''}
             </div>
             <div class="footer">Acesse o mapa ou o calendário para explorar os eventos cadastrados. Versão atual: {APP_VERSION}</div>
         </div>
+        <script>
+            function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
+                const estado = document.getElementById(estadoSelectId);
+                const municipio = document.getElementById(municipioSelectId);
+                const estadoId = estado ? estado.value : '';
+                if (!municipio) return;
+                Array.from(municipio.options).forEach((opt) => {{
+                    const dono = opt.getAttribute('data-estado-id');
+                    if (!dono) return;
+                    opt.hidden = !!estadoId && dono !== estadoId;
+                }});
+                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
+                    municipio.value = '';
+                }}
+            }}
+            filtrarMunicipios('estado_id','municipio_id');
+        </script>
     </body>
     </html>
     """
@@ -1943,6 +2105,274 @@ def home(request: Request):
 @app.get("/version")
 def version():
     return {"app": "mapaCalorEventos", "version": APP_VERSION}
+
+
+def _rotulo_estado(estado: Estado) -> str:
+    sigla = (estado.sigla or "").strip()
+    if sigla:
+        return f"{estado.nome} ({sigla})"
+    return estado.nome
+
+
+def _render_pagina_localidade(request: Request, _publico: bool = False, msg: str = "") -> str:
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = db.query(Municipio).join(Estado).order_by(Estado.nome, Municipio.nome).all()
+    finally:
+        db.close()
+
+    estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=_publico)
+
+    estados_options = "".join(
+        [
+            f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
+            for e in estados
+        ]
+    )
+    municipios_options = "".join(
+        [
+            f'<option value="{m.id}" data-estado-id="{m.estado_id}" {"selected" if m.id == municipio_sel else ""}>{escape(m.nome)}</option>'
+            for m in municipios
+        ]
+    )
+
+    acao = "/public/localidade" if _publico else "/localidade"
+    destino_padrao = "/public/visualizacao" if _publico else "/"
+    titulo = "Selecionar Localidade (Usuário Final)" if _publico else "Selecionar Localidade"
+    msg_html = f'<div class="msg">{escape(msg)}</div>' if msg else ""
+
+    return f"""
+    <html>
+    <head>
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+        <title>{escape(titulo)}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; padding: 24px; }}
+            .card {{ max-width: 680px; margin: 40px auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 14px 32px rgba(0,0,0,0.08); }}
+            h1 {{ margin-top: 0; color: #111827; }}
+            p {{ color: #4b5563; }}
+            label {{ display: block; font-weight: 700; margin: 12px 0 6px; }}
+            select {{ width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; }}
+            button {{ margin-top: 16px; border: none; border-radius: 8px; padding: 10px 14px; background: #0f766e; color: #fff; font-weight: 700; cursor: pointer; }}
+            .msg {{ background: #e0f2fe; color: #075985; border-radius: 8px; padding: 10px; margin: 10px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class=\"card\">
+            <h1>{escape(titulo)}</h1>
+            <p>Escolha o estado e o município para visualizar os dados do mapa e do calendário.</p>
+            {msg_html}
+            <form method=\"post\" action=\"{acao}\">
+                <input type=\"hidden\" name=\"next\" value=\"{destino_padrao}\" />
+                <label for=\"estado_id\">Estado</label>
+                <select id=\"estado_id\" name=\"estado_id\" onchange=\"filtrarMunicipios('estado_id','municipio_id')\" required>
+                    <option value=\"\">Selecione...</option>
+                    {estados_options}
+                </select>
+
+                <label for=\"municipio_id\">Município</label>
+                <select id=\"municipio_id\" name=\"municipio_id\" required>
+                    <option value=\"\">Selecione...</option>
+                    {municipios_options}
+                </select>
+
+                <button type=\"submit\">Aplicar localidade</button>
+            </form>
+        </div>
+        <script>
+            function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
+                const estado = document.getElementById(estadoSelectId);
+                const municipio = document.getElementById(municipioSelectId);
+                const estadoId = estado ? estado.value : '';
+                if (!municipio) return;
+                const atual = municipio.value;
+                Array.from(municipio.options).forEach((opt) => {{
+                    const dono = opt.getAttribute('data-estado-id');
+                    if (!dono) return;
+                    opt.hidden = !!estadoId && dono !== estadoId;
+                }});
+                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
+                    municipio.value = '';
+                }}
+                if (!municipio.value && atual) {{
+                    municipio.value = atual;
+                    if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
+                        municipio.value = '';
+                    }}
+                }}
+            }}
+            filtrarMunicipios('estado_id', 'municipio_id');
+        </script>
+    </body>
+    </html>
+    """
+
+
+@app.get("/localidade", response_class=HTMLResponse)
+def selecionar_localidade(request: Request):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+    return _render_pagina_localidade(request, _publico=False)
+
+
+@app.post("/localidade")
+def salvar_localidade(
+    request: Request,
+    estado_id: int = Form(...),
+    municipio_id: int = Form(...),
+    next: str = Form("/"),
+):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        if not _localidade_valida(db, estado_id, municipio_id):
+            return HTMLResponse(_render_pagina_localidade(request, _publico=False, msg="Seleção inválida."), status_code=400)
+    finally:
+        db.close()
+
+    _definir_localidade_sessao(request, estado_id, municipio_id, _publico=False)
+    return RedirectResponse(url=next or "/", status_code=303)
+
+
+@app.get("/public/localidade", response_class=HTMLResponse)
+def selecionar_localidade_publica(request: Request):
+    return _render_pagina_localidade(request, _publico=True)
+
+
+@app.post("/public/localidade")
+def salvar_localidade_publica(
+    request: Request,
+    estado_id: int = Form(...),
+    municipio_id: int = Form(...),
+    next: str = Form("/public/visualizacao"),
+):
+    db: Session = SessionLocal()
+    try:
+        if not _localidade_valida(db, estado_id, municipio_id):
+            return HTMLResponse(_render_pagina_localidade(request, _publico=True, msg="Seleção inválida."), status_code=400)
+    finally:
+        db.close()
+
+    _definir_localidade_sessao(request, estado_id, municipio_id, _publico=True)
+    return RedirectResponse(url=next or "/public/visualizacao", status_code=303)
+
+
+@app.get("/estados", response_class=HTMLResponse)
+def pagina_estados(request: Request):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+    finally:
+        db.close()
+
+    lista = "".join([f"<li>{escape(_rotulo_estado(e))}</li>" for e in estados]) or "<li>Nenhum estado cadastrado.</li>"
+
+    return f"""
+    <html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Cadastro de Estados</title>
+    <style>body{{font-family:Arial,sans-serif;background:#f3f4f6;padding:24px}}.card{{max-width:760px;margin:20px auto;background:#fff;padding:20px;border-radius:12px}}input{{width:100%;padding:10px;margin-bottom:10px}}button{{padding:10px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px}}a{{color:#2563eb}}</style>
+    </head><body><div class=\"card\"><h1>Cadastro de Estados</h1><p><a href=\"/\">Voltar</a></p>
+    <form method=\"post\" action=\"/estados\"><label>Nome do estado</label><input name=\"nome\" required />
+    <label>Sigla</label><input name=\"sigla\" maxlength=\"2\" /><button type=\"submit\">Cadastrar estado</button></form>
+    <h2>Estados cadastrados</h2><ul>{lista}</ul></div></body></html>
+    """
+
+
+@app.post("/estados")
+def cadastrar_estado(request: Request, nome: str = Form(...), sigla: str = Form("")):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    nome_limpo = (nome or "").strip()
+    if not nome_limpo:
+        return RedirectResponse(url="/estados", status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        existe = db.query(Estado).filter(Estado.nome == nome_limpo).first()
+        if not existe:
+            db.add(Estado(nome=nome_limpo, sigla=(sigla or "").strip().upper()))
+            db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(url="/estados", status_code=303)
+
+
+@app.get("/municipios", response_class=HTMLResponse)
+def pagina_municipios(request: Request):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = (
+            db.query(Municipio, Estado)
+            .join(Estado, Municipio.estado_id == Estado.id)
+            .order_by(Estado.nome, Municipio.nome)
+            .all()
+        )
+
+        estados_opts = "".join(
+            [f'<option value="{e.id}">{escape(_rotulo_estado(e))}</option>' for e in estados]
+        )
+        lista = (
+            "".join(
+                [
+                    f"<li>{escape(municipio.nome)} - {escape(_rotulo_estado(estado))}</li>"
+                    for municipio, estado in municipios
+                ]
+            )
+            or "<li>Nenhum município cadastrado.</li>"
+        )
+    finally:
+        db.close()
+
+    return f"""
+    <html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Cadastro de Municípios</title>
+    <style>body{{font-family:Arial,sans-serif;background:#f3f4f6;padding:24px}}.card{{max-width:760px;margin:20px auto;background:#fff;padding:20px;border-radius:12px}}input,select{{width:100%;padding:10px;margin-bottom:10px}}button{{padding:10px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px}}a{{color:#2563eb}}</style>
+    </head><body><div class=\"card\"><h1>Cadastro de Municípios</h1><p><a href=\"/\">Voltar</a></p>
+    <form method=\"post\" action=\"/municipios\"><label>Estado</label><select name=\"estado_id\" required>{estados_opts}</select>
+    <label>Município</label><input name=\"nome\" required /><button type=\"submit\">Cadastrar município</button></form>
+    <h2>Municípios cadastrados</h2><ul>{lista}</ul></div></body></html>
+    """
+
+
+@app.post("/municipios")
+def cadastrar_municipio(request: Request, estado_id: int = Form(...), nome: str = Form(...)):
+    redirect = _redirect_se_nao_admin(request)
+    if redirect:
+        return redirect
+
+    nome_limpo = (nome or "").strip()
+    if not nome_limpo:
+        return RedirectResponse(url="/municipios", status_code=303)
+
+    db: Session = SessionLocal()
+    try:
+        estado = db.query(Estado).filter(Estado.id == estado_id).first()
+        if not estado:
+            return RedirectResponse(url="/municipios", status_code=303)
+
+        existe = db.query(Municipio).filter(Municipio.nome == nome_limpo, Municipio.estado_id == estado_id).first()
+        if not existe:
+            db.add(Municipio(nome=nome_limpo, estado_id=estado_id))
+            db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(url="/municipios", status_code=303)
 
 
 @app.get("/usuarios", response_class=HTMLResponse)
@@ -2162,6 +2592,8 @@ def render_tela_cadastro_manutencao(
     try:
         locais_todos = db.query(Local).order_by(Local.nome).all()
         regionais = db.query(Regional).order_by(Regional.nome).all()
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = db.query(Municipio).join(Estado).order_by(Estado.nome, Municipio.nome).all()
 
         is_cadastro = modo == "cadastro"
 
@@ -2241,12 +2673,20 @@ def render_tela_cadastro_manutencao(
         locais_options = "".join(
             [f'<option value="{local.id}">{local.nome} ({local.regiao})</option>' for local in locais_todos]
         )
+        estados_options_base = "".join(
+            [f'<option value="{estado.id}">{escape(_rotulo_estado(estado))}</option>' for estado in estados]
+        )
+        municipios_options_base = "".join(
+            [f'<option value="{municipio.id}">{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios]
+        )
 
         locais_existentes_html = ""
         for local in locais:
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_estado_id = local.municipio.estado_id if local.municipio else None
+            local_municipio_id = local.municipio_id
             local_telefone = escape(local.contato_telefone or "")
             local_site = escape(local.site_url or "")
             local_tipo_evento = normalizar_tipo_evento(local.tipo_evento)
@@ -2276,6 +2716,16 @@ def render_tela_cadastro_manutencao(
                         <label>Região</label>
                         <select name="regiao" required>
                             {"".join([f'<option value="{r.nome}" {"selected" if r.nome == local_regiao else ""}>{r.nome}</option>' for r in regionais])}
+                        </select>
+
+                        <label>Estado</label>
+                        <select name="estado_id" required>
+                            {"".join([f'<option value="{estado.id}" {"selected" if estado.id == local_estado_id else ""}>{escape(_rotulo_estado(estado))}</option>' for estado in estados])}
+                        </select>
+
+                        <label>Município</label>
+                        <select name="municipio_id" required>
+                            {"".join([f'<option value="{municipio.id}" {"selected" if municipio.id == local_municipio_id else ""}>{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios])}
                         </select>
 
                         <label>Tipo de evento</label>
@@ -2486,6 +2936,16 @@ def render_tela_cadastro_manutencao(
                             <label>Região</label>
                             <select name="regiao" required>
                                 {"".join([f'<option value="{r.nome}">{r.nome}</option>' for r in regionais])}
+                            </select>
+
+                            <label>Estado</label>
+                            <select name="estado_id" required>
+                                {estados_options_base}
+                            </select>
+
+                            <label>Município</label>
+                            <select name="municipio_id" required>
+                                {municipios_options_base}
                             </select>
 
                             <label>Tipo de evento</label>
@@ -2727,6 +3187,8 @@ def cadastrar_local(
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    estado_id: int = Form(...),
+    municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
@@ -2742,10 +3204,14 @@ def cadastrar_local(
 
     db: Session = SessionLocal()
     try:
+        if not _localidade_valida(db, estado_id, municipio_id):
+            return RedirectResponse(url="/cadastro?msg=local_invalido", status_code=303)
+
         local = Local(
             nome=nome,
             endereco=endereco,
             regiao=regiao,
+            municipio_id=municipio_id,
             tipo_evento=normalizar_tipo_evento(tipo_evento),
             latitude=latitude,
             longitude=longitude,
@@ -2821,6 +3287,8 @@ def editar_local(
     nome: str = Form(...),
     endereco: str = Form(...),
     regiao: str = Form(...),
+    estado_id: int = Form(...),
+    municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
@@ -2840,9 +3308,13 @@ def editar_local(
         if not local:
             return RedirectResponse(url="/manutencao?msg=registro_nao_encontrado", status_code=303)
 
+        if not _localidade_valida(db, estado_id, municipio_id):
+            return RedirectResponse(url="/manutencao?msg=local_invalido", status_code=303)
+
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
+        local.municipio_id = municipio_id
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
         local.latitude = latitude
         local.longitude = longitude
@@ -3395,9 +3867,15 @@ def mapa_locais(request: Request, _publico: bool = False):
         if redirect:
             return redirect
 
+    redirect_localidade = _redirect_se_localidade_nao_definida(request, _publico=_publico)
+    if redirect_localidade:
+        return redirect_localidade
+
+    _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+
     db: Session = SessionLocal()
     try:
-        locais = db.query(Local).all()
+        locais = db.query(Local).filter(Local.municipio_id == municipio_id).all()
         anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
@@ -3519,9 +3997,15 @@ def mapa_eventos(request: Request, _publico: bool = False):
         if redirect:
             return redirect
 
+    redirect_localidade = _redirect_se_localidade_nao_definida(request, _publico=_publico)
+    if redirect_localidade:
+        return redirect_localidade
+
+    _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+
     db: Session = SessionLocal()
     try:
-        eventos = db.query(Evento).join(Local).all()
+        eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id).all()
         anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
@@ -3643,6 +4127,12 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         if redirect:
             return redirect
 
+    redirect_localidade = _redirect_se_localidade_nao_definida(request, _publico=_publico)
+    if redirect_localidade:
+        return redirect_localidade
+
+    _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+
     link_inicio = ""
     acao_filtro = "/calendario"
     if not _publico:
@@ -3651,12 +4141,12 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         acao_filtro = "/public/calendario"
 
     db: Session = SessionLocal()
-    locais = db.query(Local).all()
+    locais = db.query(Local).filter(Local.municipio_id == municipio_id).all()
     tipo_evento_selecionado = "Todos"
     if tipo_evento in TIPOS_EVENTO:
         tipo_evento_selecionado = tipo_evento
 
-    query_eventos = db.query(Evento).join(Local)
+    query_eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id)
     if tipo_evento_selecionado != "Todos":
         query_eventos = query_eventos.filter(Evento.tipo_evento == tipo_evento_selecionado)
     eventos = query_eventos.all()
@@ -3905,8 +4395,33 @@ def calendario_eventos_publico(request: Request, tipo_evento: str = "Todos"):
 
 
 @app.get("/public/visualizacao", response_class=HTMLResponse)
-def visualizacao_publica():
-    return """
+def visualizacao_publica(request: Request):
+    redirect_localidade = _redirect_se_localidade_nao_definida(request, _publico=True)
+    if redirect_localidade:
+        return redirect_localidade
+
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = db.query(Municipio).join(Estado).order_by(Estado.nome, Municipio.nome).all()
+    finally:
+        db.close()
+
+    estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=True)
+    estados_options = "".join(
+        [
+            f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
+            for e in estados
+        ]
+    )
+    municipios_options = "".join(
+        [
+            f'<option value="{m.id}" data-estado-id="{m.estado_id}" {"selected" if m.id == municipio_sel else ""}>{escape(m.nome)}</option>'
+            for m in municipios
+        ]
+    )
+
+    html = """
     <html>
     <head>
         <title>Visualização de Eventos BH</title>
@@ -4022,6 +4537,10 @@ def visualizacao_publica():
                 backdrop-filter: blur(4px);
             }
 
+            .localidade-switch { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+            .localidade-switch select { padding: 7px; border-radius: 8px; border: 1px solid #cbd5e1; min-width: 140px; }
+            .localidade-switch button { border: none; border-radius: 8px; padding: 8px 10px; background: #0f766e; color: #fff; font-weight: 700; cursor: pointer; }
+
             .back-btn {
                 border: 1px solid #c7d4df;
                 border-radius: 10px;
@@ -4136,6 +4655,8 @@ def visualizacao_publica():
                 .title {
                     font-size: 0.95rem;
                 }
+
+                .localidade-switch { flex-wrap: wrap; width: 100%; margin-left: 0; }
             }
         </style>
     </head>
@@ -4152,6 +4673,16 @@ def visualizacao_publica():
                 <div class="topbar">
                     <button class="back-btn" id="btnVoltar" onclick="mostrarMenu()" style="display:none;">Voltar</button>
                     <div class="title" id="tituloAtual">Selecione um item no menu lateral</div>
+                    <form class="localidade-switch" method="post" action="/public/localidade">
+                        <input type="hidden" name="next" value="/public/visualizacao" />
+                        <select id="public_estado_id" name="estado_id" onchange="filtrarMunicipios('public_estado_id','public_municipio_id')" required>
+                            __ESTADOS_OPTIONS__
+                        </select>
+                        <select id="public_municipio_id" name="municipio_id" required>
+                            __MUNICIPIOS_OPTIONS__
+                        </select>
+                        <button type="submit">Mudar</button>
+                    </form>
                 </div>
                 <div class="frame-wrap" id="frameWrap">
                     <div class="intro" id="intro">Escolha Mapa ou Calendário no menu lateral.</div>
@@ -4186,7 +4717,28 @@ def visualizacao_publica():
                 btnVoltar.style.display = 'none';
                 tituloAtual.textContent = 'Selecione um item no menu lateral';
             }
+
+            function filtrarMunicipios(estadoSelectId, municipioSelectId) {
+                const estado = document.getElementById(estadoSelectId);
+                const municipio = document.getElementById(municipioSelectId);
+                const estadoId = estado ? estado.value : '';
+                if (!municipio) return;
+                Array.from(municipio.options).forEach((opt) => {
+                    const dono = opt.getAttribute('data-estado-id');
+                    if (!dono) return;
+                    opt.hidden = !!estadoId && dono !== estadoId;
+                });
+                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {
+                    municipio.value = '';
+                }
+            }
+
+            filtrarMunicipios('public_estado_id', 'public_municipio_id');
         </script>
     </body>
     </html>
     """
+
+    html = html.replace("__ESTADOS_OPTIONS__", estados_options)
+    html = html.replace("__MUNICIPIOS_OPTIONS__", municipios_options)
+    return html
