@@ -1081,6 +1081,8 @@ def login_page(request: Request):
         erro_html = '<div class="warn" style="background:#dcfce7;color:#166534;">Cadastro concluído. Faça login para continuar.</div>'
     elif msg == "email_ou_cpf_duplicado":
         erro_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Já existe usuário com este email ou CPF.</div>'
+    elif msg == "senha_redefinida":
+        erro_html = '<div class="warn" style="background:#dcfce7;color:#166534;">Senha redefinida com sucesso. Faça login com a nova senha.</div>'
 
     if not botoes_html and USE_SOCIAL_LOGIN:
         botoes_html = (
@@ -1124,6 +1126,8 @@ def login_page(request: Request):
             .label {{ display: block; font-weight: 700; margin: 10px 0 6px; color: #111827; }}
             .input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }}
             .help {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
+            .link-action {{ display: inline-block; margin: 8px 0 14px; color: #0f766e; font-weight: 700; text-decoration: none; }}
+            .link-action:hover {{ text-decoration: underline; }}
         </style>
     </head>
     <body>
@@ -1140,6 +1144,7 @@ def login_page(request: Request):
                     <input class="input" id="senha" name="senha" type="password" required />
                     <button class="btn btn-alt" type="submit">Entrar</button>
                 </form>
+                <a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>
                 <a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>
                 {social_html}
             </div>
@@ -1168,6 +1173,95 @@ def login_local(request: Request, identificador: str = Form(...), senha: str = F
 
         request.session["user"] = _usuario_para_sessao(usuario)
         return RedirectResponse(url="/", status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/esqueci-senha", response_class=HTMLResponse)
+def esqueci_senha_page(request: Request):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+
+    msg = request.query_params.get("msg")
+    msg_html = ""
+    if msg == "usuario_nao_encontrado":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">Usuário não encontrado para o email/CPF informado.</div>'
+    elif msg == "senha_curta":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">A nova senha deve ter no mínimo 6 caracteres.</div>'
+    elif msg == "confirmacao_invalida":
+        msg_html = '<div class="warn" style="background:#fee2e2;color:#991b1b;">A confirmação da senha não confere.</div>'
+
+    return f"""
+    <html>
+    <head>
+        <title>Redefinir senha - Eventos BH</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }}
+            .wrap {{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+            .card {{ width: 100%; max-width: 460px; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 14px 32px rgba(0,0,0,.12); }}
+            h1 {{ margin: 0 0 8px; color: #111827; }}
+            p {{ margin: 0 0 18px; color: #4b5563; }}
+            .label {{ display: block; font-weight: 700; margin: 10px 0 6px; color: #111827; }}
+            .input {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; box-sizing: border-box; }}
+            .btn {{ width: 100%; border: none; border-radius: 8px; padding: 11px 14px; font-weight: 700; color: #fff; background: #111827; cursor: pointer; margin-top: 8px; }}
+            .back {{ display: inline-block; margin-top: 12px; text-decoration: none; color: #1f2937; font-weight: 700; }}
+            .warn {{ background: #fef3c7; color: #92400e; border-radius: 8px; padding: 12px; font-size: 14px; margin-bottom: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="card">
+                <h1>Redefinir senha</h1>
+                <p>Informe seu email ou CPF e defina uma nova senha.</p>
+                {msg_html}
+                <form method="post" action="/esqueci-senha">
+                    <label class="label" for="identificador">Email ou CPF</label>
+                    <input class="input" id="identificador" name="identificador" required />
+                    <label class="label" for="nova_senha">Nova senha</label>
+                    <input class="input" id="nova_senha" name="nova_senha" type="password" minlength="6" required />
+                    <label class="label" for="confirmar_senha">Confirmar nova senha</label>
+                    <input class="input" id="confirmar_senha" name="confirmar_senha" type="password" minlength="6" required />
+                    <button class="btn" type="submit">Redefinir senha</button>
+                </form>
+                <a class="back" href="/login">Voltar para login</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/esqueci-senha")
+def esqueci_senha(
+    request: Request,
+    identificador: str = Form(...),
+    nova_senha: str = Form(...),
+    confirmar_senha: str = Form(...),
+):
+    if not REQUIRE_LOGIN:
+        return RedirectResponse(url="/", status_code=303)
+
+    if len((nova_senha or "")) < 6:
+        return RedirectResponse(url="/esqueci-senha?msg=senha_curta", status_code=303)
+    if nova_senha != confirmar_senha:
+        return RedirectResponse(url="/esqueci-senha?msg=confirmacao_invalida", status_code=303)
+
+    identificador_limpo = (identificador or "").strip().lower()
+    cpf_limpo = _normalizar_cpf(identificador)
+
+    db: Session = SessionLocal()
+    try:
+        usuario = db.query(Usuario).filter(Usuario.email.ilike(identificador_limpo)).first()
+        if not usuario and cpf_limpo:
+            usuario = db.query(Usuario).filter(Usuario.cpf == cpf_limpo).first()
+        if not usuario:
+            return RedirectResponse(url="/esqueci-senha?msg=usuario_nao_encontrado", status_code=303)
+
+        usuario.senha_hash = _hash_senha(nova_senha)
+        db.commit()
+        return RedirectResponse(url="/login?msg=senha_redefinida", status_code=303)
     finally:
         db.close()
 
