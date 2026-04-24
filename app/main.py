@@ -3712,7 +3712,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             .btn-exportar:hover { background: #14532d; }
             .header { display: flex; align-items: center; gap: 20px; margin: 20px; position: relative; }
             .logo { width: 150px; height: 150px; }
-            .header h1 { margin: 0; position: absolute; left: 50%; transform: translateX(-50%); }
+            .header h1 { margin: 0 auto 0 10px; flex: 1; text-align: left; }
             .filtro-wrap { margin: 10px 20px 0 20px; display: flex; align-items: center; gap: 10px; }
             .filtro-wrap label { font-weight: bold; }
             .filtro-wrap select { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; min-width: 170px; }
@@ -4145,7 +4145,7 @@ def visualizacao_publica():
                 <div class="brand">Visualização Eventos BH</div>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
-                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário de Eventos</button>
             </aside>
 
             <main class="content">
