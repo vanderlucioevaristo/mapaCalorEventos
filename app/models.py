@@ -3,6 +3,27 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+class Estado(Base):
+    __tablename__ = "estados"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, unique=True, nullable=False)
+    sigla = Column(String, nullable=True)
+
+    municipios = relationship("Municipio", back_populates="estado")
+
+
+class Municipio(Base):
+    __tablename__ = "municipios"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, nullable=False)
+    estado_id = Column(Integer, ForeignKey("estados.id"), nullable=False)
+
+    estado = relationship("Estado", back_populates="municipios")
+    locais = relationship("Local", back_populates="municipio")
+
+
 class Regional(Base):
     __tablename__ = "regionais"
 
@@ -25,8 +46,10 @@ class Local(Base):
     acessibilidade = Column(Boolean, default=False, nullable=False)
     proximo_metro = Column(Boolean, default=False, nullable=False)
     restaurantes = Column(Boolean, default=True, nullable=False)
+    municipio_id = Column(Integer, ForeignKey("municipios.id"), nullable=True)
 
     eventos = relationship("Evento", back_populates="local")
+    municipio = relationship("Municipio", back_populates="locais")
 
 
 class Evento(Base):
