@@ -2046,6 +2046,7 @@ def home(request: Request):
         db.close()
 
     estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=False)
+    label_loc = _label_localidade(estados, municipios, estado_sel, municipio_sel)
     estados_options = "".join(
         [
             f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
@@ -2080,7 +2081,7 @@ def home(request: Request):
                             }}
                         }}
             </style>
-        <title>Eventos BH</title>
+        <title>Eventos - {escape(label_loc)}</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
             .page {{ max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }}
@@ -2104,7 +2105,7 @@ def home(request: Request):
     <body>
         <div class="page">
             <div class="top">
-                <h1>Eventos BH</h1>
+                <h1>Eventos — {escape(label_loc)}</h1>
                 <span class="user">Conectado como: {user_name}</span>
                 <a class="logout" href="/logout">Sair</a>
             </div>
@@ -2124,12 +2125,12 @@ def home(request: Request):
                 </div>
                 <button type="submit">Mudar localidade</button>
             </form>
-            <p>Bem-vindo ao painel de eventos de Belo Horizonte. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
+            <p>Bem-vindo ao painel de eventos de {escape(label_loc)}. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             {aviso_acesso_html}
             <div class="menu">
                 <a class="card" href="/mapa">
                     <h2>Mapa de Eventos</h2>
-                    <p>Visualize a localização de cada evento no mapa de Belo Horizonte com cores por região.</p>
+                    <p>Visualize a localização de cada evento no mapa de {escape(label_loc)} com cores por região.</p>
                 </a>
                 <a class="card" href="/mapa-locais">
                     <h2>Mapa de Locais</h2>
@@ -2154,15 +2155,36 @@ def home(request: Request):
             function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
                 const estado = document.getElementById(estadoSelectId);
                 const municipio = document.getElementById(municipioSelectId);
-                const estadoId = estado ? estado.value : '';
                 if (!municipio) return;
-                Array.from(municipio.options).forEach((opt) => {{
-                    const dono = opt.getAttribute('data-estado-id');
-                    if (!dono) return;
-                    opt.hidden = !!estadoId && dono !== estadoId;
+
+                if (!municipio._allOptions) {{
+                    municipio._allOptions = Array.from(municipio.options).map((opt) => ({{
+                        value: opt.value,
+                        text: opt.text,
+                        dono: opt.getAttribute('data-estado-id') || ''
+                    }}));
+                }}
+
+                const estadoId = estado ? estado.value : '';
+                const valorAtual = municipio.value;
+                const opcoesFiltradas = municipio._allOptions.filter((opt) => !estadoId || !opt.dono || opt.dono === estadoId);
+
+                municipio.innerHTML = '';
+                opcoesFiltradas.forEach((opt) => {{
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt.value;
+                    optionEl.text = opt.text;
+                    if (opt.dono) {{
+                        optionEl.setAttribute('data-estado-id', opt.dono);
+                    }}
+                    municipio.appendChild(optionEl);
                 }});
-                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
-                    municipio.value = '';
+
+                const aindaExiste = opcoesFiltradas.some((opt) => opt.value === valorAtual);
+                if (aindaExiste) {{
+                    municipio.value = valorAtual;
+                }} else if (municipio.options.length) {{
+                    municipio.selectedIndex = 0;
                 }}
             }}
             filtrarMunicipios('estado_id','municipio_id');
@@ -2182,6 +2204,32 @@ def _rotulo_estado(estado: Estado) -> str:
     if sigla:
         return f"{estado.nome} ({sigla})"
     return estado.nome
+
+
+def _label_localidade(
+    estados: list,
+    municipios: list,
+    estado_id: Optional[int],
+    municipio_id: Optional[int],
+) -> str:
+    """Retorna 'Município - UF' (ou nome do estado) com base na localidade selecionada."""
+    municipio_nome = None
+    estado_sigla = None
+    for m in municipios:
+        if m.id == municipio_id:
+            municipio_nome = m.nome
+            break
+    for e in estados:
+        if e.id == estado_id:
+            estado_sigla = (e.sigla or "").strip() or e.nome
+            break
+    if municipio_nome and estado_sigla:
+        return f"{municipio_nome} - {estado_sigla}"
+    if municipio_nome:
+        return municipio_nome
+    if estado_sigla:
+        return estado_sigla
+    return "localidade"
 
 
 def _render_pagina_localidade(request: Request, _publico: bool = False, msg: str = "") -> str:
@@ -2254,22 +2302,36 @@ def _render_pagina_localidade(request: Request, _publico: bool = False, msg: str
             function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
                 const estado = document.getElementById(estadoSelectId);
                 const municipio = document.getElementById(municipioSelectId);
-                const estadoId = estado ? estado.value : '';
                 if (!municipio) return;
-                const atual = municipio.value;
-                Array.from(municipio.options).forEach((opt) => {{
-                    const dono = opt.getAttribute('data-estado-id');
-                    if (!dono) return;
-                    opt.hidden = !!estadoId && dono !== estadoId;
-                }});
-                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
-                    municipio.value = '';
+
+                if (!municipio._allOptions) {{
+                    municipio._allOptions = Array.from(municipio.options).map((opt) => ({{
+                        value: opt.value,
+                        text: opt.text,
+                        dono: opt.getAttribute('data-estado-id') || ''
+                    }}));
                 }}
-                if (!municipio.value && atual) {{
-                    municipio.value = atual;
-                    if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {{
-                        municipio.value = '';
+
+                const estadoId = estado ? estado.value : '';
+                const valorAtual = municipio.value;
+                const opcoesFiltradas = municipio._allOptions.filter((opt) => !estadoId || !opt.dono || opt.dono === estadoId);
+
+                municipio.innerHTML = '';
+                opcoesFiltradas.forEach((opt) => {{
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt.value;
+                    optionEl.text = opt.text;
+                    if (opt.dono) {{
+                        optionEl.setAttribute('data-estado-id', opt.dono);
                     }}
+                    municipio.appendChild(optionEl);
+                }});
+
+                const aindaExiste = opcoesFiltradas.some((opt) => opt.value === valorAtual);
+                if (aindaExiste) {{
+                    municipio.value = valorAtual;
+                }} else if (municipio.options.length) {{
+                    municipio.selectedIndex = 0;
                 }}
             }}
             filtrarMunicipios('estado_id', 'municipio_id');
@@ -2747,7 +2809,7 @@ def render_tela_cadastro_manutencao(
             [f'<option value="{estado.id}">{escape(_rotulo_estado(estado))}</option>' for estado in estados]
         )
         municipios_options_base = "".join(
-            [f'<option value="{municipio.id}">{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios]
+            [f'<option value="{municipio.id}" data-estado-id="{municipio.estado_id}">{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios]
         )
 
         locais_existentes_html = ""
@@ -2789,13 +2851,13 @@ def render_tela_cadastro_manutencao(
                         </select>
 
                         <label>Estado</label>
-                        <select name="estado_id" required>
+                        <select id="edit_estado_{local.id}" name="estado_id" onchange="filtrarMunicipios('edit_estado_{local.id}','edit_municipio_{local.id}')" required>
                             {"".join([f'<option value="{estado.id}" {"selected" if estado.id == local_estado_id else ""}>{escape(_rotulo_estado(estado))}</option>' for estado in estados])}
                         </select>
 
                         <label>Município</label>
-                        <select name="municipio_id" required>
-                            {"".join([f'<option value="{municipio.id}" {"selected" if municipio.id == local_municipio_id else ""}>{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios])}
+                        <select id="edit_municipio_{local.id}" name="municipio_id" required>
+                            {"".join([f'<option value="{municipio.id}" data-estado-id="{municipio.estado_id}" {"selected" if municipio.id == local_municipio_id else ""}>{escape(municipio.nome)} - {escape(_rotulo_estado(municipio.estado))}</option>' for municipio in municipios])}
                         </select>
 
                         <label>Tipo de evento</label>
@@ -3009,12 +3071,12 @@ def render_tela_cadastro_manutencao(
                             </select>
 
                             <label>Estado</label>
-                            <select name="estado_id" required>
+                            <select id="cadastro_estado_id" name="estado_id" onchange="filtrarMunicipios('cadastro_estado_id','cadastro_municipio_id')" required>
                                 {estados_options_base}
                             </select>
 
                             <label>Município</label>
-                            <select name="municipio_id" required>
+                            <select id="cadastro_municipio_id" name="municipio_id" required>
                                 {municipios_options_base}
                             </select>
 
@@ -3196,9 +3258,49 @@ def render_tela_cadastro_manutencao(
                 {secoes_manutencao_html}
             </div>
             <script>
+                function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
+                    const estado = document.getElementById(estadoSelectId);
+                    const municipio = document.getElementById(municipioSelectId);
+                    if (!municipio) return;
+
+                    if (!municipio._allOptions) {{
+                        municipio._allOptions = Array.from(municipio.options).map((opt) => ({{
+                            value: opt.value,
+                            text: opt.text,
+                            dono: opt.getAttribute('data-estado-id') || ''
+                        }}));
+                    }}
+
+                    const estadoId = estado ? estado.value : '';
+                    const valorAtual = municipio.value;
+                    const opcoesFiltradas = municipio._allOptions.filter((opt) => !estadoId || !opt.dono || opt.dono === estadoId);
+
+                    municipio.innerHTML = '';
+                    opcoesFiltradas.forEach((opt) => {{
+                        const optionEl = document.createElement('option');
+                        optionEl.value = opt.value;
+                        optionEl.text = opt.text;
+                        if (opt.dono) {{
+                            optionEl.setAttribute('data-estado-id', opt.dono);
+                        }}
+                        municipio.appendChild(optionEl);
+                    }});
+
+                    const aindaExiste = opcoesFiltradas.some((opt) => opt.value === valorAtual);
+                    if (aindaExiste) {{
+                        municipio.value = valorAtual;
+                    }} else if (municipio.options.length) {{
+                        municipio.selectedIndex = 0;
+                    }}
+                }}
+
                 function openModal(id) {{
                     var el = document.getElementById(id);
                     if (el) el.style.display = 'block';
+                    if (id.startsWith('local-modal-')) {{
+                        var localId = id.replace('local-modal-', '');
+                        filtrarMunicipios('edit_estado_' + localId, 'edit_municipio_' + localId);
+                    }}
                 }}
 
                 function closeModal(id) {{
@@ -3211,6 +3313,8 @@ def render_tela_cadastro_manutencao(
                         closeModal(id);
                     }}
                 }}
+
+                filtrarMunicipios('cadastro_estado_id', 'cadastro_municipio_id');
             </script>
         </body>
         </html>
@@ -4209,6 +4313,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         return redirect_localidade
 
     _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+    estado_id, _ = _obter_localidade_sessao(request, _publico=_publico)
 
     link_inicio = ""
     acao_filtro = "/calendario"
@@ -4218,6 +4323,9 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         acao_filtro = "/public/calendario"
 
     db: Session = SessionLocal()
+    estados_db = db.query(Estado).order_by(Estado.nome).all()
+    municipios_db = db.query(Municipio).order_by(Municipio.nome).all()
+    label_loc = _label_localidade(estados_db, municipios_db, estado_id, municipio_id)
     locais = db.query(Local).filter(Local.municipio_id == municipio_id).all()
     tipo_evento_selecionado = "Todos"
     if tipo_evento in TIPOS_EVENTO:
@@ -4262,13 +4370,15 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
 
     logo_html = ""
     if EXIBIR_LOGO and LOGO_URL:
-        logo_html = f'<img class="logo" src="{escape(LOGO_URL)}" alt="Logo BH">'
+        logo_html = f'<img class="logo" src="{escape(LOGO_URL)}" alt="Logo">'
+
+    label_loc_escaped = escape(label_loc)
 
     html = """
     <html>
     <head>
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Calendário de Eventos BH</title>
+        <title>Calendário de Eventos - {LABEL_LOC}</title>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
             body { font-family: Arial, sans-serif; }
@@ -4308,7 +4418,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         <div id="calendario-exportavel">
         <div class="header">
             {logo_html}
-            <h1>Calendário de Eventos de Belo Horizonte</h1>
+            <h1>Calendário de Eventos de {LABEL_LOC}</h1>
         </div>
         <form class="filtro-wrap" method="get" action="{acao_filtro}">
             <label for="tipo_evento">Tipo de evento:</label>
@@ -4328,6 +4438,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     html = html.replace("{logo_html}", logo_html)
     html = html.replace("{link_inicio}", link_inicio)
     html = html.replace("{acao_filtro}", acao_filtro)
+    html = html.replace("{LABEL_LOC}", label_loc_escaped)
 
     opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
     for tipo in TIPOS_EVENTO:
@@ -4485,6 +4596,8 @@ def visualizacao_publica(request: Request):
         db.close()
 
     estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=True)
+    label_loc = _label_localidade(estados, municipios, estado_sel, municipio_sel)
+    label_loc_escaped = escape(label_loc)
     estados_options = "".join(
         [
             f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
@@ -4501,7 +4614,7 @@ def visualizacao_publica(request: Request):
     html = """
     <html>
     <head>
-        <title>Visualização de Eventos BH</title>
+        <title>Visualização de Eventos - __LABEL_LOC__</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
             :root {
@@ -4740,7 +4853,7 @@ def visualizacao_publica(request: Request):
     <body>
         <div id="layout" class="layout">
             <aside id="sidebar" class="sidebar">
-                <div class="brand">Visualização Eventos BH</div>
+                <div class="brand">Visualização Eventos - __LABEL_LOC__</div>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário de Eventos</button>
@@ -4798,15 +4911,36 @@ def visualizacao_publica(request: Request):
             function filtrarMunicipios(estadoSelectId, municipioSelectId) {
                 const estado = document.getElementById(estadoSelectId);
                 const municipio = document.getElementById(municipioSelectId);
-                const estadoId = estado ? estado.value : '';
                 if (!municipio) return;
-                Array.from(municipio.options).forEach((opt) => {
-                    const dono = opt.getAttribute('data-estado-id');
-                    if (!dono) return;
-                    opt.hidden = !!estadoId && dono !== estadoId;
+
+                if (!municipio._allOptions) {
+                    municipio._allOptions = Array.from(municipio.options).map((opt) => ({
+                        value: opt.value,
+                        text: opt.text,
+                        dono: opt.getAttribute('data-estado-id') || ''
+                    }));
+                }
+
+                const estadoId = estado ? estado.value : '';
+                const valorAtual = municipio.value;
+                const opcoesFiltradas = municipio._allOptions.filter((opt) => !estadoId || !opt.dono || opt.dono === estadoId);
+
+                municipio.innerHTML = '';
+                opcoesFiltradas.forEach((opt) => {
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt.value;
+                    optionEl.text = opt.text;
+                    if (opt.dono) {
+                        optionEl.setAttribute('data-estado-id', opt.dono);
+                    }
+                    municipio.appendChild(optionEl);
                 });
-                if (municipio.selectedOptions.length && municipio.selectedOptions[0].hidden) {
-                    municipio.value = '';
+
+                const aindaExiste = opcoesFiltradas.some((opt) => opt.value === valorAtual);
+                if (aindaExiste) {
+                    municipio.value = valorAtual;
+                } else if (municipio.options.length) {
+                    municipio.selectedIndex = 0;
                 }
             }
 
@@ -4818,4 +4952,5 @@ def visualizacao_publica(request: Request):
 
     html = html.replace("__ESTADOS_OPTIONS__", estados_options)
     html = html.replace("__MUNICIPIOS_OPTIONS__", municipios_options)
+    html = html.replace("__LABEL_LOC__", label_loc_escaped)
     return html
