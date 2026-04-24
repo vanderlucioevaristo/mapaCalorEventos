@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .database import SessionLocal, engine, Base
 from .models import Evento, Local, Regional, Anunciante, Usuario, InteracaoClique
-from .. import __version__ as APP_VERSION
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -36,6 +35,28 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 ENV_FILE_PATH = BASE_DIR / ".env"
+
+
+def _resolver_versao_app() -> str:
+    # Funciona tanto em execucao via "mapaCalorEventos.app.main" quanto "app.main".
+    try:
+        from mapaCalorEventos import __version__ as version
+
+        return version
+    except Exception:
+        try:
+            init_file = Path(__file__).resolve().parents[1] / "__init__.py"
+            content = init_file.read_text(encoding="utf-8")
+            match = re.search(r'__version__\s*=\s*"([^"]+)"', content)
+            if match:
+                return match.group(1)
+        except Exception:
+            pass
+
+    return "0.0.0"
+
+
+APP_VERSION = _resolver_versao_app()
 
 # Meses em português
 meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
