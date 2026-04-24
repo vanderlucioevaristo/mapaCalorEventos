@@ -3886,13 +3886,14 @@ def visualizacao_publica():
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
             :root {
-                --bg: #f4f6f8;
+                --bg: #eef2f5;
                 --card: #ffffff;
                 --line: #d7dee5;
                 --text: #0e2233;
                 --muted: #5c6f7f;
-                --accent: #0c546f;
-                --accent-2: #117a8b;
+                --accent: #0b4d68;
+                --accent-2: #0a7e88;
+                --accent-soft: #e8f4f6;
                 --shadow: 0 14px 34px rgba(12, 42, 58, 0.15);
             }
 
@@ -3903,8 +3904,8 @@ def visualizacao_publica():
                 padding: 0;
                 width: 100%;
                 height: 100%;
-                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-                background: radial-gradient(circle at 12% 16%, #ffffff 0, #f4f6f8 52%, #e7ecf1 100%);
+                font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+                background: radial-gradient(circle at 9% 12%, #ffffff 0, #f1f5f7 42%, #e4ebf1 100%);
                 color: var(--text);
             }
 
@@ -3913,6 +3914,7 @@ def visualizacao_publica():
                 grid-template-columns: 290px 1fr;
                 min-height: 100vh;
                 transition: grid-template-columns 0.35s ease;
+                position: relative;
             }
 
             .layout.retracted {
@@ -3928,6 +3930,7 @@ def visualizacao_publica():
                 overflow: hidden;
                 transition: transform 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
                 z-index: 30;
+                backdrop-filter: blur(2px);
             }
 
             .layout.retracted .sidebar {
@@ -3941,15 +3944,8 @@ def visualizacao_publica():
             .brand {
                 font-size: 1.2rem;
                 font-weight: 800;
-                letter-spacing: 0.2px;
-            }
-
-            .subtitle {
-                margin-top: 6px;
-                margin-bottom: 18px;
-                font-size: 0.92rem;
-                color: rgba(255, 255, 255, 0.88);
-                line-height: 1.4;
+                letter-spacing: 0.35px;
+                text-transform: uppercase;
             }
 
             .menu-btn {
@@ -3964,18 +3960,20 @@ def visualizacao_publica():
                 font-size: 0.95rem;
                 font-weight: 700;
                 cursor: pointer;
-                transition: transform 0.15s ease, background-color 0.2s ease;
+                transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
             }
 
             .menu-btn:hover {
                 background: rgba(255, 255, 255, 0.2);
                 transform: translateX(2px);
+                border-color: rgba(255, 255, 255, 0.45);
             }
 
             .menu-btn.active {
                 background: #fff;
                 color: #0b455d;
                 border-color: #fff;
+                box-shadow: 0 6px 18px rgba(10, 30, 42, 0.18);
             }
 
             .content {
@@ -3990,23 +3988,33 @@ def visualizacao_publica():
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                padding: 8px 4px;
+                padding: 10px 12px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.72);
+                backdrop-filter: blur(4px);
             }
 
             .back-btn {
-                border: 1px solid var(--line);
+                border: 1px solid #c7d4df;
                 border-radius: 10px;
-                background: #fff;
-                color: #122b3a;
+                background: linear-gradient(180deg, #ffffff 0%, #f4f7f9 100%);
+                color: #17374b;
                 font-weight: 700;
                 padding: 9px 14px;
                 cursor: pointer;
+                transition: transform 0.15s ease;
+            }
+
+            .back-btn:hover {
+                transform: translateY(-1px);
             }
 
             .title {
                 font-size: 1rem;
                 font-weight: 700;
                 color: #123448;
+                letter-spacing: 0.2px;
             }
 
             .frame-wrap {
@@ -4017,6 +4025,7 @@ def visualizacao_publica():
                 box-shadow: 0 10px 24px rgba(12, 42, 58, 0.09);
                 overflow: hidden;
                 position: relative;
+                animation: frameIn 0.35s ease;
             }
 
             .intro {
@@ -4030,9 +4039,20 @@ def visualizacao_publica():
                 font-size: 1.02rem;
                 line-height: 1.5;
                 background:
-                    radial-gradient(circle at 78% 8%, rgba(17, 122, 139, 0.08) 0, transparent 52%),
-                    radial-gradient(circle at 14% 84%, rgba(12, 84, 111, 0.08) 0, transparent 45%),
+                    radial-gradient(circle at 78% 8%, rgba(17, 122, 139, 0.1) 0, transparent 52%),
+                    radial-gradient(circle at 14% 84%, rgba(12, 84, 111, 0.1) 0, transparent 45%),
                     #fff;
+            }
+
+            @keyframes frameIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(4px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
             }
 
             #viewer {
@@ -4060,6 +4080,14 @@ def visualizacao_publica():
                     border-right: 1px solid rgba(255, 255, 255, 0.2);
                 }
 
+                .layout:not(.retracted)::after {
+                    content: "";
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(5, 22, 31, 0.28);
+                    z-index: 20;
+                }
+
                 .layout.retracted .sidebar {
                     transform: translateX(-105%);
                     opacity: 1;
@@ -4068,6 +4096,8 @@ def visualizacao_publica():
 
                 .content {
                     padding: 10px;
+                    position: relative;
+                    z-index: 10;
                 }
 
                 .frame-wrap,
@@ -4086,7 +4116,6 @@ def visualizacao_publica():
         <div id="layout" class="layout">
             <aside id="sidebar" class="sidebar">
                 <div class="brand">Visualização Eventos BH</div>
-                <div class="subtitle">Mapa e calendário em modo rápido</div>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário</button>
