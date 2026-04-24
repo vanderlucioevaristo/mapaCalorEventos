@@ -265,6 +265,76 @@ def coordenadas_validas(latitude, longitude) -> bool:
     return -90 <= lat <= 90 and -180 <= lon <= 180
 
 
+def _pontos_estado(db: Session, estado_id: Optional[int]) -> list[tuple[float, float]]:
+    if not estado_id:
+        return []
+
+    locais_estado = (
+        db.query(Local)
+        .join(Municipio, Local.municipio_id == Municipio.id)
+        .filter(Municipio.estado_id == estado_id)
+        .all()
+    )
+
+    pontos = []
+    for local in locais_estado:
+        if coordenadas_validas(local.latitude, local.longitude):
+            pontos.append((float(local.latitude), float(local.longitude)))
+    return pontos
+
+
+def _centro_mapa_por_estado(db: Session, estado_id: Optional[int]) -> tuple[float, float, int]:
+    """Retorna centro e zoom sugerido usando os locais do estado selecionado."""
+    pontos = _pontos_estado(db, estado_id)
+
+    if not pontos:
+        return (-19.9191, -43.9386, 12)
+
+    lats = [lat for lat, _ in pontos]
+    lons = [lon for _, lon in pontos]
+    centro_lat = sum(lats) / len(lats)
+    centro_lon = sum(lons) / len(lons)
+
+    lat_span = max(lats) - min(lats)
+    lon_span = max(lons) - min(lons)
+    span = max(lat_span, lon_span)
+
+    if span > 8:
+        zoom = 5
+    elif span > 4:
+        zoom = 6
+    elif span > 2:
+        zoom = 7
+    elif span > 1:
+        zoom = 8
+    elif span > 0.5:
+        zoom = 9
+    else:
+        zoom = 10
+
+    return (centro_lat, centro_lon, zoom)
+
+
+def _bounds_mapa_por_estado(db: Session, estado_id: Optional[int]) -> Optional[list[list[float]]]:
+    pontos = _pontos_estado(db, estado_id)
+    if not pontos:
+        return None
+
+    lats = [lat for lat, _ in pontos]
+    lons = [lon for _, lon in pontos]
+    min_lat, max_lat = min(lats), max(lats)
+    min_lon, max_lon = min(lons), max(lons)
+
+    if min_lat == max_lat and min_lon == max_lon:
+        delta = 0.03
+        min_lat -= delta
+        max_lat += delta
+        min_lon -= delta
+        max_lon += delta
+
+    return [[min_lat, min_lon], [max_lat, max_lon]]
+
+
 def _normalizar_site_url(site_url: str) -> str:
     url = (site_url or "").strip()
     if not url:
@@ -3871,7 +3941,7 @@ def mapa_locais(request: Request, _publico: bool = False):
     if redirect_localidade:
         return redirect_localidade
 
-    _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+    estado_id, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
 
     db: Session = SessionLocal()
     try:
@@ -3880,7 +3950,11 @@ def mapa_locais(request: Request, _publico: bool = False):
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
 
-        mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
+        bounds_estado = _bounds_mapa_por_estado(db, estado_id)
+        mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        if bounds_estado:
+            mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         if not _publico:
@@ -4001,7 +4075,7 @@ def mapa_eventos(request: Request, _publico: bool = False):
     if redirect_localidade:
         return redirect_localidade
 
-    _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
+    estado_id, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
 
     db: Session = SessionLocal()
     try:
@@ -4010,8 +4084,11 @@ def mapa_eventos(request: Request, _publico: bool = False):
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
 
-        # Centro do mapa em Belo Horizonte
-        mapa = folium.Map(location=[-19.9191, -43.9386], zoom_start=12)
+        centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
+        bounds_estado = _bounds_mapa_por_estado(db, estado_id)
+        mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        if bounds_estado:
+            mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         if not _publico:
