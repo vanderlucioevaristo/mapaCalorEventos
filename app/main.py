@@ -1695,40 +1695,6 @@ def cadastro_rapido_page(request: Request):
     <html>
     <head>
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <style>
-                @media (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
-            <style>
-                 (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
         <title>Cadastro rápido - Eventos BH</title>
         <style>
             body { font-family: Arial, sans-serif; background: #f3f4f6; margin: 0; }
@@ -1899,23 +1865,6 @@ def home(request: Request):
                             }}
                         }}
             </style>
-            <style>
-                 (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
         <title>Eventos BH</title>
         <style>
             body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
@@ -2027,23 +1976,6 @@ def usuarios_page(request: Request, msg: Optional[str] = None):
             <meta name="viewport" content="width=device-width, initial-scale=1" />
             <style>
                 @media (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
-            <style>
-                 (max-width: 768px) {{
                     html {{ font-size: 16px; }}
                     body {{ padding: 12px !important; }}
                     input, select, textarea, button, .btn, a.btn {{
@@ -2644,23 +2576,6 @@ def render_tela_cadastro_manutencao(
                             }}
                         }}
             </style>
-            <style>
-                 (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
             <title>{titulo_pagina}</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f7fafc; margin: 0; padding: 24px; }}
@@ -3230,23 +3145,6 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                             }}
                         }}
             </style>
-            <style>
-                 (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
             <title>Gerenciar Anunciantes</title>
             <style>
                 body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 24px; }}
@@ -3776,40 +3674,6 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     <html>
     <head>
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <style>
-                @media (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
-            <style>
-                 (max-width: 768px) {{
-                    html {{ font-size: 16px; }}
-                    body {{ padding: 12px !important; }}
-                    input, select, textarea, button, .btn, a.btn {{
-                        font-size: 16px !important;
-                        min-height: 44px;
-                            }}
-                    table {{
-                        display: block;
-                        width: 100%;
-                        overflow-x: auto;
-                        -webkit-overflow-scrolling: touch;
-                        white-space: nowrap;
-                            }}
-                        }}
-            </style>
         <title>Calendário de Eventos BH</title>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
@@ -3831,7 +3695,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
             .infra-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-size: 12px; }
-            table {{ border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
+            table { border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; font-size: 16px; }
             .evento { margin: 2px 0; padding: 2px; border-radius: 3px; }
@@ -3959,7 +3823,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             if (!area || typeof html2canvas === 'undefined') {
                 alert('Não foi possível gerar a imagem agora.');
                 return;
-                    }}
+            }
 
             const canvas = await html2canvas(area, {
                 scale: 2,
@@ -3979,7 +3843,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             if (saidaAltura < origemAltura) {
                 saidaAltura = origemAltura;
                 saidaLargura = Math.round(saidaAltura * proporcao);
-                    }}
+            }
 
             const canvasPaisagem = document.createElement('canvas');
             canvasPaisagem.width = saidaLargura;
@@ -4020,203 +3884,6 @@ def visualizacao_publica():
     <head>
         <title>Visualização de Eventos BH</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <style>
-            @media (max-width: 768px) {{
-                html {{ font-size: 16px; }}
-                body {{ padding: 12px !important; }}
-                input, select, textarea, button, .btn, a.btn {{
-                    font-size: 16px !important;
-                    min-height: 44px;
-                        }}
-                table {{
-                    display: block;
-                    width: 100%;
-                    overflow-x: auto;
-                    -webkit-overflow-scrolling: touch;
-                    white-space: nowrap;
-                        }}
-                    }}
-        </style>
-        <style>
-            :root {
-                --bg: #f4f7fb;
-                --panel: #ffffff;
-                --primary: #0f766e;
-                --primary-dark: #0d5f58;
-                --text: #12263a;
-                --muted: #5f6c7b;
-                --shadow: 0 10px 28px rgba(18, 38, 58, 0.12);
-                    }}
-
-            * { box-sizing: border-box; }
-
-            body {
-                margin: 0;
-                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-                background: radial-gradient(circle at top left, #e8f4f7 0%, var(--bg) 42%, #eef3ff 100%);
-                color: var(--text);
-                min-height: 100vh;
-                    }}
-
-            .layout {
-                display: grid;
-                grid-template-columns: 280px 1fr;
-                min-height: 100vh;
-                transition: grid-template-columns 0.28s ease;
-                    }}
-
-            .layout.retracted {
-                grid-template-columns: 0 1fr;
-                    }}
-
-            .sidebar {
-                padding: 18px;
-                background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
-                color: #fff;
-                box-shadow: var(--shadow);
-                overflow: hidden;
-                transition: transform 0.28s ease, opacity 0.22s ease;
-                z-index: 3;
-                    }}
-
-            .layout.retracted .sidebar {
-                transform: translateX(-100%);
-                opacity: 0;
-                visibility: hidden;
-                pointer-events: none;
-                    }}
-
-            .brand {
-                font-size: 20px;
-                font-weight: 800;
-                margin-bottom: 6px;
-                letter-spacing: 0.2px;
-                    }}
-
-            .subtitle {
-                color: rgba(255, 255, 255, 0.85);
-                margin-bottom: 20px;
-                font-size: 14px;
-                    }}
-
-            .menu-btn {
-                width: 100%;
-                border: none;
-                border-radius: 12px;
-                padding: 14px;
-                margin-bottom: 10px;
-                text-align: left;
-                font-weight: 700;
-                font-size: 15px;
-                color: #0f172a;
-                background: #e7f9f7;
-                cursor: pointer;
-                transition: transform 0.15s ease, background 0.15s ease;
-                    }}
-
-            .menu-btn:hover {
-                transform: translateY(-1px);
-                background: #d7f3ef;
-                    }}
-
-            .content {
-                padding: 16px;
-                min-width: 0;
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-                min-height: 100vh;
-                position: relative;
-                z-index: 1;
-                    }}
-
-            .topbar {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                min-height: 44px;
-                    }}
-
-            .back-btn {
-                border: none;
-                background: var(--primary);
-                color: #fff;
-                border-radius: 10px;
-                padding: 10px 14px;
-                font-weight: 700;
-                cursor: pointer;
-                box-shadow: var(--shadow);
-                    }}
-
-            .back-btn:hover { background: var(--primary-dark); }
-
-            .title {
-                font-weight: 700;
-                color: var(--muted);
-                font-size: 14px;
-                    }}
-
-            .frame-wrap {
-                flex: 1;
-                background: var(--panel);
-                border-radius: 14px;
-                overflow: hidden;
-                box-shadow: var(--shadow);
-                min-height: 72vh;
-                height: calc(100vh - 96px);
-                    }}
-
-            iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
-                display: block;
-                background: #fff;
-                    }}
-
-            .intro {
-                height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--muted);
-                font-weight: 600;
-                padding: 20px;
-                text-align: center;
-                    }}
-
-            @media (max-width: 860px) {
-                .layout {
-                    grid-template-columns: 1fr;
-                        }}
-
-                .layout.retracted {
-                    grid-template-columns: 1fr;
-                        }}
-
-                .sidebar {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    bottom: 0;
-                    width: 84vw;
-                    max-width: 300px;
-                        }}
-
-                .layout.retracted .sidebar {
-                    transform: translateX(-105%);
-                        }}
-
-                .content {
-                    padding: 12px;
-                        }}
-
-                .frame-wrap {
-                    height: calc(100dvh - 96px);
-                    min-height: calc(100dvh - 96px);
-                        }}
-                    }}
-        </style>
     </head>
     <body>
         <div id="layout" class="layout">
@@ -4254,13 +3921,13 @@ def visualizacao_publica():
                 layout.classList.add('retracted');
                 btnVoltar.style.display = 'inline-block';
                 tituloAtual.textContent = titulo;
-                    }}
+            }
 
             function mostrarMenu() {
                 layout.classList.remove('retracted');
                 btnVoltar.style.display = 'none';
                 tituloAtual.textContent = 'Selecione um item no menu lateral';
-                    }}
+            }
         </script>
     </body>
     </html>
