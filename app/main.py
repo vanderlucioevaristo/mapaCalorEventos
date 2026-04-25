@@ -618,7 +618,7 @@ def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str =
         "border:1px solid #d7e2ee;box-shadow:0 8px 20px rgba(15,23,42,0.10);"
         + (extra_style or "")
     )
-    return f'<a href="/public/portal" style="{estilo}">&#8592; {escape(label)}</a>'
+    return f'<a href="{PORTAL_PUBLICO_PATH}" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
 def recursos_rota_mapa_html(map_name: str) -> str:
@@ -1066,6 +1066,7 @@ LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
 ).strip()
+PORTAL_PUBLICO_PATH = "/public/portal"
 
 
 def _usuario_atual(request: Request) -> dict:
@@ -1598,7 +1599,7 @@ def salvar_configuracoes(
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     if not REQUIRE_LOGIN:
         return RedirectResponse(url=next_path, status_code=303)
     if request.session.get("user"):
@@ -1748,9 +1749,9 @@ def login_local(
     request: Request,
     identificador: str = Form(...),
     senha: str = Form(...),
-    next: str = Form("/"),
+    next: str = Form(PORTAL_PUBLICO_PATH),
 ):
-    next_path = _next_path_or_default(next, "/")
+    next_path = _next_path_or_default(next, PORTAL_PUBLICO_PATH)
     if not REQUIRE_LOGIN:
         return RedirectResponse(url=next_path, status_code=303)
 
@@ -1778,9 +1779,9 @@ def login_local(
 @app.get("/esqueci-senha", response_class=HTMLResponse)
 def esqueci_senha_page(request: Request):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
     if request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     msg = request.query_params.get("msg")
     msg_html = ""
@@ -1874,7 +1875,7 @@ def esqueci_senha(
     confirmar_senha: str = Form(...),
 ):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     if len((nova_senha or "")) < 6:
         return RedirectResponse(url="/esqueci-senha?msg=senha_curta", status_code=303)
@@ -1902,10 +1903,10 @@ def esqueci_senha(
 @app.get("/cadastro-rapido", response_class=HTMLResponse)
 def cadastro_rapido_page(request: Request):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     if request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     return """
     <html>
@@ -1951,7 +1952,7 @@ def cadastro_rapido_page(request: Request):
 @app.post("/cadastro-rapido")
 def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Form(...), senha: str = Form(...)):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     nome_limpo = (nome or "").strip()
     email_limpo = (email or "").strip().lower()
@@ -1982,14 +1983,14 @@ def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Fo
 
 @app.get("/logout")
 def logout(request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/login")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     request.session.clear()
     return RedirectResponse(url=next_path, status_code=303)
 
 
 @app.get("/auth/{provider}/login")
 async def oauth_login(provider: str, request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     if not USE_SOCIAL_LOGIN:
         return RedirectResponse(url=f"/login?next={quote_plus(next_path)}", status_code=303)
 
@@ -2011,7 +2012,10 @@ async def oauth_callback(provider: str, request: Request):
     if not client:
         return RedirectResponse(url="/login", status_code=303)
 
-    next_path = _next_path_or_default(request.session.pop("oauth_next", "/"), "/")
+    next_path = _next_path_or_default(
+        request.session.pop("oauth_next", PORTAL_PUBLICO_PATH),
+        PORTAL_PUBLICO_PATH,
+    )
 
     try:
         token = await client.authorize_access_token(request)
@@ -4122,8 +4126,7 @@ def mapa_locais(request: Request, _publico: bool = False):
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        if not _publico:
-            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         locais_mostrados = 0
         contagem_por_regional = {}
@@ -4256,8 +4259,7 @@ def mapa_eventos(request: Request, _publico: bool = False):
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        if not _publico:
-            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -4382,6 +4384,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
     else:
         acao_filtro = "/public/calendario"
+        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
 
     db: Session = SessionLocal()
     estados_db = db.query(Estado).order_by(Estado.nome).all()
