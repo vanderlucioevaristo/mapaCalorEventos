@@ -601,15 +601,24 @@ def legenda_mapa_html(
 
 
 def atalho_inicio_mapa_html() -> str:
-    return '''
+    return f'''
     <div style="position: fixed;
                 top: 12px; left: 64px; z-index: 9999;
-                background: white; border: 2px solid #e5e7eb;
-                border-radius: 8px; padding: 8px 10px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.12);">
-        <a href="/" style="text-decoration:none; color:#111827; font-weight:700;">Início</a>
+        {botao_voltar_portal_html()}
     </div>
     '''
+
+
+def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str = "") -> str:
+    estilo = (
+        "display:inline-flex;align-items:center;gap:8px;"
+        "padding:10px 14px;border-radius:999px;"
+        "background:#ffffff;color:#0f172a;text-decoration:none;font-weight:700;"
+        "border:1px solid #d7e2ee;box-shadow:0 8px 20px rgba(15,23,42,0.10);"
+        + (extra_style or "")
+    )
+    return f'<a href="/public/portal" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
 def recursos_rota_mapa_html(map_name: str) -> str:
@@ -1026,6 +1035,13 @@ def _oauth_redirect_uri(request: Request, provider: str) -> str:
     return f"{_oauth_base_url(request)}/auth/{provider}/callback"
 
 
+def _next_path_or_default(valor: Optional[str], default: str = "/") -> str:
+    destino = (valor or "").strip()
+    if not destino.startswith("/"):
+        return default
+    return destino
+
+
 USUARIO_MESTRE = {
     "provider": "sistema",
     "id": "mestre",
@@ -1377,7 +1393,7 @@ def board_interacoes(request: Request):
         </head>
         <body>
             <div class="page">
-                <a href="/">← Voltar</a>
+                {botao_voltar_portal_html()}
                 <h1>Board de interações</h1>
                 <div class="grid">
                     <div class="card">
@@ -1524,7 +1540,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 
                 <div class="actions">
                     <button class="btn btn-primary" type="submit">Salvar</button>
-                    <a class="btn btn-secondary" href="/">Voltar</a>
+                    {botao_voltar_portal_html()}
                 </div>
             </form>
         </div>
@@ -1582,10 +1598,11 @@ def salvar_configuracoes(
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    next_path = _next_path_or_default(request.query_params.get("next"), "/")
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=next_path, status_code=303)
     if request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=next_path, status_code=303)
 
     auth_error = request.query_params.get("erro")
     msg = request.query_params.get("msg")
@@ -1599,7 +1616,7 @@ def login_page(request: Request):
             "apple": "#111827",
         }.get(provedor, "#2563eb")
         botoes_html += (
-            f'<a class="btn" style="background:{cor};" href="/auth/{provedor}/login">'
+            f'<a class="btn" style="background:{cor};" href="/auth/{provedor}/login?next={quote_plus(next_path)}">'
             f'Entrar com {rotulo}</a>'
         )
 
@@ -1704,11 +1721,12 @@ def login_page(request: Request):
     <body>
         <div class="wrap">
             <div class="card">
-                <a class="home-link" href="/">Início</a>
+                {botao_voltar_portal_html(extra_style='margin-bottom:12px;')}
                 <h1>Entrar no Eventos</h1>
                 <p>Use email ou CPF com senha. Se ainda não tiver cadastro, crie em poucos segundos.</p>
                 {erro_html}
                 <form method="post" action="/login/local">
+                    <input type="hidden" name="next" value="{escape(next_path)}" />
                     <label class="label" for="identificador">Email ou CPF</label>
                     <input class="input" id="identificador" name="identificador" placeholder="email@dominio.com ou 00000000000" required />
                     <label class="label" for="senha">Senha</label>
@@ -1726,9 +1744,15 @@ def login_page(request: Request):
 
 
 @app.post("/login/local")
-def login_local(request: Request, identificador: str = Form(...), senha: str = Form(...)):
+def login_local(
+    request: Request,
+    identificador: str = Form(...),
+    senha: str = Form(...),
+    next: str = Form("/"),
+):
+    next_path = _next_path_or_default(next, "/")
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=next_path, status_code=303)
 
     db: Session = SessionLocal()
     try:
@@ -1740,10 +1764,13 @@ def login_local(request: Request, identificador: str = Form(...), senha: str = F
             usuario = db.query(Usuario).filter(Usuario.cpf == cpf_limpo).first()
 
         if not usuario or not _verificar_senha(senha, usuario.senha_hash):
-            return RedirectResponse(url="/login?msg=credenciais_invalidas", status_code=303)
+            return RedirectResponse(
+                url=f"/login?msg=credenciais_invalidas&next={quote_plus(next_path)}",
+                status_code=303,
+            )
 
         request.session["user"] = _usuario_para_sessao(usuario)
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=next_path, status_code=303)
     finally:
         db.close()
 
@@ -1955,19 +1982,22 @@ def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Fo
 
 @app.get("/logout")
 def logout(request: Request):
+    next_path = _next_path_or_default(request.query_params.get("next"), "/login")
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=303)
+    return RedirectResponse(url=next_path, status_code=303)
 
 
 @app.get("/auth/{provider}/login")
 async def oauth_login(provider: str, request: Request):
+    next_path = _next_path_or_default(request.query_params.get("next"), "/")
     if not USE_SOCIAL_LOGIN:
-        return RedirectResponse(url="/login", status_code=303)
+        return RedirectResponse(url=f"/login?next={quote_plus(next_path)}", status_code=303)
 
     client = oauth.create_client(provider)
     if not client:
-        return RedirectResponse(url="/login", status_code=303)
+        return RedirectResponse(url=f"/login?next={quote_plus(next_path)}", status_code=303)
 
+    request.session["oauth_next"] = next_path
     redirect_uri = _oauth_redirect_uri(request, provider)
     kwargs = {}
     if provider == "google":
@@ -1981,10 +2011,15 @@ async def oauth_callback(provider: str, request: Request):
     if not client:
         return RedirectResponse(url="/login", status_code=303)
 
+    next_path = _next_path_or_default(request.session.pop("oauth_next", "/"), "/")
+
     try:
         token = await client.authorize_access_token(request)
     except OAuthError:
-        return RedirectResponse(url=f"/login?erro={provider}", status_code=303)
+        return RedirectResponse(
+            url=f"/login?erro={provider}&next={quote_plus(next_path)}",
+            status_code=303,
+        )
 
     profile = {}
     if provider == "google":
@@ -2015,7 +2050,7 @@ async def oauth_callback(provider: str, request: Request):
         "email": profile.get("email") or "",
         "role": role,
     }
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=next_path, status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -2411,7 +2446,7 @@ def pagina_estados(request: Request):
     return f"""
     <html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Cadastro de Estados</title>
     <style>body{{font-family:Arial,sans-serif;background:#f3f4f6;padding:24px}}.card{{max-width:760px;margin:20px auto;background:#fff;padding:20px;border-radius:12px}}input{{width:100%;padding:10px;margin-bottom:10px}}button{{padding:10px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px}}a{{color:#2563eb}}</style>
-    </head><body><div class=\"card\"><h1>Cadastro de Estados</h1><p><a href=\"/\">Voltar</a></p>
+    </head><body><div class=\"card\"><h1>Cadastro de Estados</h1><p>{botao_voltar_portal_html()}</p>
     <form method=\"post\" action=\"/estados\"><label>Nome do estado</label><input name=\"nome\" required />
     <label>Sigla</label><input name=\"sigla\" maxlength=\"2\" /><button type=\"submit\">Cadastrar estado</button></form>
     <h2>Estados cadastrados</h2><ul>{lista}</ul></div></body></html>
@@ -2474,7 +2509,7 @@ def pagina_municipios(request: Request):
     return f"""
     <html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Cadastro de Municípios</title>
     <style>body{{font-family:Arial,sans-serif;background:#f3f4f6;padding:24px}}.card{{max-width:760px;margin:20px auto;background:#fff;padding:20px;border-radius:12px}}input,select{{width:100%;padding:10px;margin-bottom:10px}}button{{padding:10px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px}}a{{color:#2563eb}}</style>
-    </head><body><div class=\"card\"><h1>Cadastro de Municípios</h1><p><a href=\"/\">Voltar</a></p>
+    </head><body><div class=\"card\"><h1>Cadastro de Municípios</h1><p>{botao_voltar_portal_html()}</p>
     <form method=\"post\" action=\"/municipios\"><label>Estado</label><select name=\"estado_id\" required>{estados_opts}</select>
     <label>Município</label><input name=\"nome\" required /><button type=\"submit\">Cadastrar município</button></form>
     <h2>Municípios cadastrados</h2><ul>{lista}</ul></div></body></html>
@@ -2642,7 +2677,7 @@ def usuarios_page(request: Request, msg: Optional[str] = None):
                     </div>
                     <div class="actions">
                         <button class="btn btn-primary" type="submit">Salvar perfil</button>
-                        <a class="btn btn-secondary" href="/">Voltar</a>
+                        {botao_voltar_portal_html()}
                     </div>
                 </form>
                 {bloco_lista}
@@ -2783,10 +2818,14 @@ def render_tela_cadastro_manutencao(
         msg_html = ""
         if msg == "local_ok":
             msg_html = '<div class="msg ok">Local cadastrado com sucesso.</div>'
+        elif msg == "local_ok_sem_coordenadas":
+            msg_html = '<div class="msg aviso">Local cadastrado, mas o endereço não foi localizado. Coordenadas pendentes.</div>'
         elif msg == "evento_ok":
             msg_html = '<div class="msg ok">Evento cadastrado com sucesso.</div>'
         elif msg == "local_edit_ok":
             msg_html = '<div class="msg ok">Local atualizado com sucesso.</div>'
+        elif msg == "local_edit_ok_sem_coordenadas":
+            msg_html = '<div class="msg aviso">Local atualizado, mas o endereço não foi localizado. Coordenadas pendentes.</div>'
         elif msg == "evento_edit_ok":
             msg_html = '<div class="msg ok">Evento atualizado com sucesso.</div>'
         elif msg == "local_delete_ok":
@@ -2799,6 +2838,8 @@ def render_tela_cadastro_manutencao(
             msg_html = '<div class="msg erro">A data final não pode ser menor que a data inicial.</div>'
         elif msg == "local_invalido":
             msg_html = '<div class="msg erro">Selecione um local válido para o evento.</div>'
+        elif msg == "endereco_nao_localizado":
+            msg_html = '<div class="msg erro">Não foi possível localizar o endereço informado para preencher latitude e longitude.</div>'
         elif msg == "registro_nao_encontrado":
             msg_html = '<div class="msg erro">Registro não encontrado.</div>'
 
@@ -2817,6 +2858,7 @@ def render_tela_cadastro_manutencao(
             local_nome = escape(local.nome or "")
             local_endereco = escape(local.endereco or "")
             local_regiao = escape(local.regiao or "")
+            local_sem_coordenadas = not coordenadas_validas(local.latitude, local.longitude)
             local_estado_id = local.municipio.estado_id if local.municipio else None
             local_municipio_id = local.municipio_id
             local_telefone = escape(local.contato_telefone or "")
@@ -2825,9 +2867,11 @@ def render_tela_cadastro_manutencao(
             local_acessibilidade_checked = "checked" if bool(local.acessibilidade) else ""
             local_proximo_metro_checked = "checked" if bool(local.proximo_metro) else ""
             local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
+            local_warning_class = " warning-coords" if local_sem_coordenadas else ""
+            local_warning_html = '<small class="coord-warning">Coordenadas pendentes</small>' if local_sem_coordenadas else ""
             locais_existentes_html += f"""
-            <div class="item-row">
-                <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small></div>
+            <div class="item-row{local_warning_class}">
+                <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small> {local_warning_html}</div>
                 <div class="item-actions">
                     <button class="btn-secondary" type="button" onclick="openModal('local-modal-{local.id}')">Editar</button>
                     <form method="post" action="/cadastro/local/{local.id}/excluir" onsubmit="return confirm('Excluir local e eventos vinculados?');">
@@ -2866,10 +2910,10 @@ def render_tela_cadastro_manutencao(
                         </select>
 
                         <label>Latitude</label>
-                        <input type="number" step="any" name="latitude" value="{local.latitude}" required />
+                        <input type="number" step="any" name="latitude" value="{local.latitude}" readonly />
 
                         <label>Longitude</label>
-                        <input type="number" step="any" name="longitude" value="{local.longitude}" required />
+                        <input type="number" step="any" name="longitude" value="{local.longitude}" readonly />
 
                         <label>Telefone de contato</label>
                         <input name="contato_telefone" value="{local_telefone}" />
@@ -3086,10 +3130,10 @@ def render_tela_cadastro_manutencao(
                             </select>
 
                             <label>Latitude</label>
-                            <input type="number" step="any" name="latitude" required />
+                            <input type="number" step="any" name="latitude" value="0.0" readonly />
 
                             <label>Longitude</label>
-                            <input type="number" step="any" name="longitude" required />
+                            <input type="number" step="any" name="longitude" value="0.0" readonly />
 
                             <label>Telefone de contato</label>
                             <input name="contato_telefone" placeholder="(31) 99999-9999" />
@@ -3211,7 +3255,9 @@ def render_tela_cadastro_manutencao(
                 .item-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fafafa; }}
                 .item-card h3 {{ margin-top: 0; color: #111827; }}
                 .item-row {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fafafa; }}
+                .item-row.warning-coords {{ background: #fef3c7; border-color: #f59e0b; }}
                 .item-name {{ font-weight: 700; color: #1f2937; }}
+                .coord-warning {{ color: #92400e; font-weight: 700; }}
                 .item-actions {{ display: flex; gap: 8px; align-items: center; }}
                 .item-actions form {{ margin: 0; }}
                 label {{ display: block; font-weight: 600; margin-bottom: 6px; color: #111827; }}
@@ -3235,6 +3281,7 @@ def render_tela_cadastro_manutencao(
                 .back {{ display: inline-block; color: #2563eb; text-decoration: none; font-weight: 600; }}
                 .msg {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }}
                 .ok {{ background: #dcfce7; color: #166534; }}
+                .aviso {{ background: #fef3c7; color: #92400e; }}
                 .erro {{ background: #fee2e2; color: #991b1b; }}
                 .vazio {{ color: #6b7280; font-style: italic; }}
                 @media (max-width: 900px) {{
@@ -3251,7 +3298,7 @@ def render_tela_cadastro_manutencao(
                         <a class="{nav_cadastro_class}" href="/cadastro">Tela de Cadastro</a>
                         <a class="{nav_manutencao_class}" href="/manutencao">Tela de Manutenção</a>
                     </div>
-                    <a class="back" href="/">Voltar para a página inicial</a>
+                    {botao_voltar_portal_html()}
                 </div>
                 {msg_html}
                 {secoes_cadastro_html}
@@ -3364,8 +3411,6 @@ def cadastrar_local(
     estado_id: int = Form(...),
     municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
-    latitude: float = Form(...),
-    longitude: float = Form(...),
     contato_telefone: str = Form(""),
     site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
@@ -3381,14 +3426,17 @@ def cadastrar_local(
         if not _localidade_valida(db, estado_id, municipio_id):
             return RedirectResponse(url="/cadastro?msg=local_invalido", status_code=303)
 
+        latitude_geo, longitude_geo = geocodificar_endereco(endereco)
+        sem_coordenadas = latitude_geo is None or longitude_geo is None
+
         local = Local(
             nome=nome,
             endereco=endereco,
             regiao=regiao,
             municipio_id=municipio_id,
             tipo_evento=normalizar_tipo_evento(tipo_evento),
-            latitude=latitude,
-            longitude=longitude,
+            latitude=None if sem_coordenadas else latitude_geo,
+            longitude=None if sem_coordenadas else longitude_geo,
             contato_telefone=(contato_telefone or "").strip(),
             site_url=(site_url or "").strip(),
             acessibilidade=bool(acessibilidade),
@@ -3397,7 +3445,8 @@ def cadastrar_local(
         )
         db.add(local)
         db.commit()
-        return RedirectResponse(url="/cadastro?msg=local_ok", status_code=303)
+        msg = "local_ok_sem_coordenadas" if sem_coordenadas else "local_ok"
+        return RedirectResponse(url=f"/cadastro?msg={msg}", status_code=303)
     finally:
         db.close()
 
@@ -3464,8 +3513,6 @@ def editar_local(
     estado_id: int = Form(...),
     municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
-    latitude: float = Form(...),
-    longitude: float = Form(...),
     contato_telefone: str = Form(""),
     site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
@@ -3485,20 +3532,24 @@ def editar_local(
         if not _localidade_valida(db, estado_id, municipio_id):
             return RedirectResponse(url="/manutencao?msg=local_invalido", status_code=303)
 
+        latitude_geo, longitude_geo = geocodificar_endereco(endereco)
+        sem_coordenadas = latitude_geo is None or longitude_geo is None
+
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
         local.municipio_id = municipio_id
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
-        local.latitude = latitude
-        local.longitude = longitude
+        local.latitude = None if sem_coordenadas else latitude_geo
+        local.longitude = None if sem_coordenadas else longitude_geo
         local.contato_telefone = (contato_telefone or "").strip()
         local.site_url = (site_url or "").strip()
         local.acessibilidade = bool(acessibilidade)
         local.proximo_metro = bool(proximo_metro)
         local.restaurantes = bool(restaurantes)
         db.commit()
-        return RedirectResponse(url="/manutencao?msg=local_edit_ok", status_code=303)
+        msg = "local_edit_ok_sem_coordenadas" if sem_coordenadas else "local_edit_ok"
+        return RedirectResponse(url=f"/manutencao?msg={msg}", status_code=303)
     finally:
         db.close()
 
@@ -3633,15 +3684,14 @@ def cadastrar_anunciante(
             return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
 
         latitude_geo, longitude_geo = geocodificar_endereco(endereco)
-        if latitude_geo is None or longitude_geo is None:
-            return RedirectResponse(url="/anunciantes?msg=endereco_nao_localizado", status_code=303)
+        sem_coordenadas = latitude_geo is None or longitude_geo is None
 
         anunciante = Anunciante(
             nome=nome,
             tipo=(tipo or "").strip(),
             endereco=endereco,
-            latitude=latitude_geo,
-            longitude=longitude_geo,
+            latitude=None if sem_coordenadas else latitude_geo,
+            longitude=None if sem_coordenadas else longitude_geo,
             contato_telefone=(contato_telefone or "").strip(),
             site_url=(site_url or "").strip(),
             urlimagem=urlimagem,
@@ -3650,7 +3700,8 @@ def cadastrar_anunciante(
         )
         db.add(anunciante)
         db.commit()
-        return RedirectResponse(url="/anunciantes?msg=ok", status_code=303)
+        msg = "ok_sem_coordenadas" if sem_coordenadas else "ok"
+        return RedirectResponse(url=f"/anunciantes?msg={msg}", status_code=303)
     finally:
         db.close()
 
@@ -3697,21 +3748,21 @@ def editar_anunciante(
             return RedirectResponse(url="/anunciantes?msg=periodo_invalido", status_code=303)
 
         latitude_geo, longitude_geo = geocodificar_endereco(endereco)
-        if latitude_geo is None or longitude_geo is None:
-            return RedirectResponse(url="/anunciantes?msg=endereco_nao_localizado", status_code=303)
+        sem_coordenadas = latitude_geo is None or longitude_geo is None
 
         anunciante.nome = nome
         anunciante.tipo = (tipo or "").strip()
         anunciante.endereco = endereco
-        anunciante.latitude = latitude_geo
-        anunciante.longitude = longitude_geo
+        anunciante.latitude = None if sem_coordenadas else latitude_geo
+        anunciante.longitude = None if sem_coordenadas else longitude_geo
         anunciante.contato_telefone = (contato_telefone or "").strip()
         anunciante.site_url = (site_url or "").strip()
         anunciante.urlimagem = urlimagem
         anunciante.datainicio = data_inicio_dt
         anunciante.datafim = data_fim_dt
         db.commit()
-        return RedirectResponse(url="/anunciantes?msg=edit_ok", status_code=303)
+        msg = "edit_ok_sem_coordenadas" if sem_coordenadas else "edit_ok"
+        return RedirectResponse(url=f"/anunciantes?msg={msg}", status_code=303)
     finally:
         db.close()
 
@@ -3748,8 +3799,12 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
         msg_html = ""
         if msg == "ok":
             msg_html = '<div class="msg ok">Anunciante cadastrado com sucesso.</div>'
+        elif msg == "ok_sem_coordenadas":
+            msg_html = '<div class="msg aviso">Anunciante cadastrado, mas o endereço não foi localizado. Coordenadas pendentes.</div>'
         elif msg == "edit_ok":
             msg_html = '<div class="msg ok">Anunciante atualizado com sucesso.</div>'
+        elif msg == "edit_ok_sem_coordenadas":
+            msg_html = '<div class="msg aviso">Anunciante atualizado, mas o endereço não foi localizado. Coordenadas pendentes.</div>'
         elif msg == "delete_ok":
             msg_html = '<div class="msg ok">Anunciante excluído com sucesso.</div>'
         elif msg == "nao_encontrado":
@@ -3767,8 +3822,12 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
             anunciante_nome = escape(anunciante.nome or "")
             anunciante_tipo = escape(anunciante.tipo or "")
             anunciante_endereco = escape(anunciante.endereco or "")
-            anunciante_latitude = anunciante.latitude or 0.0
-            anunciante_longitude = anunciante.longitude or 0.0
+            anunciante_sem_coordenadas = not coordenadas_validas(anunciante.latitude, anunciante.longitude)
+            anunciante_latitude = "-" if anunciante.latitude is None else anunciante.latitude
+            anunciante_longitude = "-" if anunciante.longitude is None else anunciante.longitude
+            anunciante_latitude_modal = "" if anunciante.latitude is None else anunciante.latitude
+            anunciante_longitude_modal = "" if anunciante.longitude is None else anunciante.longitude
+            anunciante_warning_class = "warning-coords" if anunciante_sem_coordenadas else ""
             anunciante_telefone = escape(anunciante.contato_telefone or "")
             anunciante_site = _normalizar_site_url(anunciante.site_url or "")
             anunciante_urlimagem = escape(anunciante.urlimagem or "")
@@ -3776,7 +3835,7 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
             anunciante_datafim = anunciante.datafim.isoformat() if anunciante.datafim else ""
 
             anunciantes_html += f"""
-            <tr>
+            <tr class="{anunciante_warning_class}">
                 <td>{anunciante_id}</td>
                 <td>{anunciante_nome}</td>
                 <td>{anunciante_tipo}</td>
@@ -3789,7 +3848,7 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                 <td>{anunciante_datafim}</td>
                 <td><a href="{anunciante_urlimagem}" target="_blank">Ver</a></td>
                 <td>
-                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {anunciante_latitude}, {anunciante_longitude}, {json.dumps(anunciante.contato_telefone or "")}, {json.dumps(anunciante.site_url or "")}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
+                    <button onclick='openEditModal({anunciante_id}, {json.dumps(anunciante.nome or "")}, {json.dumps(anunciante.tipo or "")}, {json.dumps(anunciante.endereco or "")}, {json.dumps(anunciante_latitude_modal)}, {json.dumps(anunciante_longitude_modal)}, {json.dumps(anunciante.contato_telefone or "")}, {json.dumps(anunciante.site_url or "")}, {json.dumps(anunciante.urlimagem or "")}, {json.dumps(anunciante_datainicio)}, {json.dumps(anunciante_datafim)})'>Editar</button>
                     <form method="post" action="/cadastro/anunciante/{anunciante_id}/excluir" style="display:inline;">
                         <button type="submit" onclick="return confirm('Tem certeza?')">Excluir</button>
                     </form>
@@ -3825,6 +3884,7 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                 h1 {{ margin-top: 0; color: #1f2937; }}
                 .msg {{ border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }}
                 .ok {{ background: #dcfce7; color: #166534; }}
+                .aviso {{ background: #fef3c7; color: #92400e; }}
                 .erro {{ background: #fee2e2; color: #991b1b; }}
                 .btn {{ background: #1f2937; color: white; border: none; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 700; }}
                 .btn:hover {{ background: #111827; }}
@@ -3832,6 +3892,7 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
                 th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }}
                 th {{ background: #f3f4f6; font-weight: 700; color: #111827; }}
                 tr:hover {{ background: #f9fafb; }}
+                tr.warning-coords td {{ background: #fef3c7; }}
                 .modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.5); z-index: 9999; }}
                 .modal.show {{ display: flex; align-items: center; justify-content: center; }}
                 .modal-content {{ background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 100%; }}
@@ -3849,7 +3910,7 @@ def gerenciar_anunciantes(request: Request, msg: Optional[str] = None):
         </head>
         <body>
             <div class="page">
-                <a href="/" style="text-decoration:none;color:#1f2937;font-weight:700;">← Voltar</a>
+                {botao_voltar_portal_html()}
                 <h1>Gerenciar Anunciantes</h1>
                 {msg_html}
                 <button class="btn" onclick="openCreateModal()">+ Novo Anunciante</button>
@@ -4318,7 +4379,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     link_inicio = ""
     acao_filtro = "/calendario"
     if not _publico:
-        link_inicio = '<a href="/" style="text-decoration:none; color:#111827; font-weight:700; margin-right:auto;">Início</a>'
+        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
     else:
         acao_filtro = "/public/calendario"
 
@@ -4954,3 +5015,431 @@ def visualizacao_publica(request: Request):
     html = html.replace("__MUNICIPIOS_OPTIONS__", municipios_options)
     html = html.replace("__LABEL_LOC__", label_loc_escaped)
     return html
+
+
+@app.get("/public/portal", response_class=HTMLResponse)
+def portal_publico(request: Request):
+    db: Session = SessionLocal()
+    try:
+        estados = db.query(Estado).order_by(Estado.nome).all()
+        municipios = db.query(Municipio).join(Estado).order_by(Estado.nome, Municipio.nome).all()
+    finally:
+        db.close()
+
+    estado_sel, municipio_sel = _obter_localidade_sessao(request, _publico=True)
+    label_loc = _label_localidade(estados, municipios, estado_sel, municipio_sel)
+    label_loc_escaped = escape(label_loc)
+
+    estados_options = "".join(
+        [
+            f'<option value="{e.id}" {"selected" if e.id == estado_sel else ""}>{escape(_rotulo_estado(e))}</option>'
+            for e in estados
+        ]
+    )
+    municipios_options = "".join(
+        [
+            f'<option value="{m.id}" data-estado-id="{m.estado_id}" {"selected" if m.id == municipio_sel else ""}>{escape(m.nome)}</option>'
+            for m in municipios
+        ]
+    )
+
+    hoje = datetime.now().date()
+    inicio_mes = date(hoje.year, hoje.month, 1)
+    fim_mes = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
+
+    eventos_mes = []
+    if municipio_sel:
+        db = SessionLocal()
+        try:
+            eventos_mes = (
+                db.query(
+                    Evento.nome,
+                    Evento.descricao,
+                    Evento.data_inicio,
+                    Evento.data_fim,
+                    Evento.tipo_evento,
+                    Evento.publico_estimado,
+                    Local.nome.label("local_nome"),
+                )
+                .join(Local)
+                .filter(
+                    Local.municipio_id == municipio_sel,
+                    Evento.data_inicio <= fim_mes,
+                    Evento.data_fim >= inicio_mes,
+                )
+                .order_by(Evento.data_inicio.asc(), Evento.nome.asc())
+                .all()
+            )
+        finally:
+            db.close()
+
+    slides_html = ""
+    if eventos_mes:
+        for evento in eventos_mes:
+            nome = escape(evento.nome or "Sem nome")
+            descricao = escape((evento.descricao or "").strip())
+            descricao_curta = (descricao[:140] + "...") if len(descricao) > 140 else descricao
+            periodo = f"{evento.data_inicio.strftime('%d/%m')} a {evento.data_fim.strftime('%d/%m')}"
+            local_nome = escape(evento.local_nome or "Local não informado")
+            tipo = escape(normalizar_tipo_evento(evento.tipo_evento))
+            publico = evento.publico_estimado or 0
+            slides_html += f"""
+            <article class="carousel-item">
+                <div class="chip">{tipo}</div>
+                <h3>{nome}</h3>
+                <p class="meta">{periodo} · {local_nome}</p>
+                <p>{descricao_curta or 'Programação em atualização.'}</p>
+                <p class="meta">Público estimado: {publico}</p>
+            </article>
+            """
+    else:
+        slides_html = """
+        <article class="carousel-item">
+            <div class="chip">Agenda</div>
+            <h3>Nenhum evento previsto neste mês</h3>
+            <p class="meta">Ajuste a localidade para explorar outra cidade.</p>
+            <p>Quando houver novos eventos no mês corrente, eles aparecerão aqui automaticamente.</p>
+        </article>
+        """
+
+    user = _usuario_atual(request)
+    auth_portal = request.query_params.get("auth") == "1"
+    if auth_portal and user:
+        request.session["portal_admin_autenticado"] = True
+    if not user:
+        request.session.pop("portal_admin_autenticado", None)
+
+    is_logado = bool(user) and bool(request.session.get("portal_admin_autenticado"))
+    is_admin = _eh_admin_ou_super_admin(user) if is_logado else False
+    is_super_admin = _eh_super_admin(user) if is_logado else False
+    user_name = escape(user.get("name") or "") if is_logado else ""
+
+    itens_menu = [
+        '<a class="menu-link" href="/public/mapa">Mapa de Eventos</a>',
+        '<a class="menu-link" href="/public/mapa-locais">Mapa de Locais</a>',
+        '<a class="menu-link" href="/public/calendario">Calendário</a>',
+    ]
+
+    if is_admin:
+        itens_menu.extend(
+            [
+                '<div class="menu-sep"></div>',
+                '<a class="menu-link" href="/usuarios">Usuários</a>',
+                '<a class="menu-link" href="/board-interacoes">Board de Interações</a>',
+                '<a class="menu-link" href="/cadastro">Cadastro</a>',
+                '<a class="menu-link" href="/manutencao">Manutenção</a>',
+                '<a class="menu-link" href="/estados">Estados</a>',
+                '<a class="menu-link" href="/municipios">Municípios</a>',
+            ]
+        )
+        if is_super_admin:
+            itens_menu.extend(
+                [
+                    '<a class="menu-link" href="/anunciantes">Anunciantes</a>',
+                    '<a class="menu-link" href="/configuracoes">Configurações</a>',
+                ]
+            )
+        itens_menu.append('<a class="menu-link logout" href="/logout?next=/public/portal">Sair</a>')
+    else:
+        itens_menu.extend(
+            [
+                '<div class="menu-sep"></div>',
+                '<a class="menu-link login" href="/login?next=/public/portal?auth=1">Login administrativo</a>',
+            ]
+        )
+
+    menu_html = "".join(itens_menu)
+    saudacao = f"Conectado como: {user_name}" if is_logado else "Acesso público"
+
+    return f"""
+    <html>
+    <head>
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+        <title>Portal Público de Eventos - {label_loc_escaped}</title>
+        <style>
+            :root {{
+                --bg: #f3f7fb;
+                --ink: #0f172a;
+                --muted: #475569;
+                --line: #d7e2ee;
+                --brand: #0f766e;
+                --brand-strong: #0b5f58;
+                --sun: #f59e0b;
+            }}
+            * {{ box-sizing: border-box; }}
+            body {{
+                margin: 0;
+                font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+                color: var(--ink);
+                background: radial-gradient(circle at 9% 8%, #ffffff 0, #eef4f9 48%, #e5eef7 100%);
+            }}
+            .page {{ max-width: 1100px; margin: 0 auto; padding: 22px 18px 90px; }}
+            .hero {{
+                background: linear-gradient(120deg, #0f766e 0%, #0b4d68 100%);
+                color: #fff;
+                border-radius: 18px;
+                padding: 20px;
+                box-shadow: 0 14px 34px rgba(11, 77, 104, 0.24);
+            }}
+            .hero h1 {{ margin: 0 0 8px; font-size: 1.6rem; }}
+            .hero p {{ margin: 0; opacity: 0.95; }}
+            .status {{ margin-top: 8px; font-size: 0.92rem; opacity: 0.95; }}
+
+            .contexto {{
+                margin-top: 16px;
+                display: grid;
+                grid-template-columns: 1fr 1fr auto;
+                gap: 10px;
+                align-items: end;
+                background: #fff;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 14px;
+            }}
+            .contexto label {{ display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 4px; }}
+            .contexto select {{ width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #cbd5e1; }}
+            .contexto button {{ border: 0; border-radius: 10px; padding: 10px 12px; color: #fff; background: var(--brand); font-weight: 700; cursor: pointer; }}
+            .contexto button:hover {{ background: var(--brand-strong); }}
+
+            .section-title {{ margin: 24px 0 12px; font-size: 1.2rem; color: #0f172a; }}
+            .carousel-shell {{
+                position: relative;
+                border: 1px solid var(--line);
+                background: #fff;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            }}
+            .carousel-track {{
+                display: flex;
+                transition: transform 0.35s ease;
+                width: 100%;
+            }}
+            .carousel-item {{
+                flex: 0 0 100%;
+                padding: 18px;
+                min-height: 220px;
+                background:
+                    radial-gradient(circle at 90% 12%, rgba(15,118,110,0.08) 0, transparent 40%),
+                    radial-gradient(circle at 10% 86%, rgba(245,158,11,0.10) 0, transparent 44%),
+                    #fff;
+            }}
+            .carousel-item h3 {{ margin: 8px 0; font-size: 1.25rem; }}
+            .carousel-item p {{ margin: 6px 0; color: var(--muted); }}
+            .chip {{
+                display: inline-block;
+                padding: 4px 10px;
+                border-radius: 999px;
+                font-size: 0.75rem;
+                font-weight: 800;
+                letter-spacing: 0.3px;
+                background: #e2f3f1;
+                color: #0b5f58;
+                border: 1px solid #b7e3df;
+            }}
+            .meta {{ font-size: 0.9rem; color: #334155; }}
+
+            .carousel-nav {{
+                position: absolute;
+                inset: auto 0 12px 0;
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+            }}
+            .carousel-btn {{
+                border: 0;
+                border-radius: 999px;
+                width: 34px;
+                height: 34px;
+                font-weight: 900;
+                cursor: pointer;
+                color: #fff;
+                background: rgba(15, 23, 42, 0.7);
+            }}
+
+            .fab {{
+                position: fixed;
+                left: 16px;
+                top: 16px;
+                z-index: 99;
+                border: 0;
+                border-radius: 999px;
+                width: 58px;
+                height: 58px;
+                background: linear-gradient(140deg, #0f766e, #0b4d68);
+                color: #fff;
+                font-size: 1.4rem;
+                font-weight: 900;
+                cursor: pointer;
+                box-shadow: 0 14px 26px rgba(11, 77, 104, 0.32);
+            }}
+            .floating-menu {{
+                position: fixed;
+                left: 16px;
+                top: 84px;
+                width: min(340px, calc(100vw - 32px));
+                max-height: 70vh;
+                overflow: auto;
+                border-radius: 16px;
+                border: 1px solid #c7d8e6;
+                background: #fff;
+                padding: 12px;
+                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.22);
+                z-index: 98;
+                opacity: 0;
+                transform: translateY(10px) scale(0.98);
+                pointer-events: none;
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }}
+            .floating-menu.open {{
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                pointer-events: auto;
+            }}
+            .floating-menu h2 {{ margin: 0 0 10px; font-size: 1rem; color: #0f172a; }}
+            .menu-link {{
+                display: block;
+                text-decoration: none;
+                color: #0f172a;
+                background: #f8fbff;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 9px 10px;
+                font-weight: 700;
+                margin-bottom: 8px;
+            }}
+            .menu-link:hover {{ background: #eef6ff; }}
+            .menu-link.login {{ background: #ecfeff; border-color: #b9ecf1; color: #0f766e; }}
+            .menu-link.logout {{ background: #fff1f2; border-color: #fecdd3; color: #9f1239; }}
+            .menu-sep {{ height: 1px; background: #dbe5ef; margin: 10px 0; }}
+
+            @media (max-width: 860px) {{
+                .contexto {{ grid-template-columns: 1fr; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="page">
+            <section class="hero">
+                <h1>Portal Público de Eventos</h1>
+                <p>Explore agenda, mapas e calendário de forma rápida para a localidade selecionada.</p>
+                <div class="status">{saudacao} · Contexto atual: <b>{label_loc_escaped}</b></div>
+            </section>
+
+            <form class="contexto" method="post" action="/public/localidade">
+                <input type="hidden" name="next" value="/public/portal" />
+                <div>
+                    <label for="portal_estado_id">Estado</label>
+                    <select id="portal_estado_id" name="estado_id" onchange="filtrarMunicipios('portal_estado_id','portal_municipio_id')" required>
+                        {estados_options}
+                    </select>
+                </div>
+                <div>
+                    <label for="portal_municipio_id">Município</label>
+                    <select id="portal_municipio_id" name="municipio_id" required>
+                        {municipios_options}
+                    </select>
+                </div>
+                <button type="submit">Aplicar contexto</button>
+            </form>
+
+            <h2 class="section-title">Eventos do mês corrente em {label_loc_escaped}</h2>
+            <section class="carousel-shell" aria-label="Carrossel de eventos do mês">
+                <div class="carousel-track" id="carouselTrack">
+                    {slides_html}
+                </div>
+                <div class="carousel-nav">
+                    <button class="carousel-btn" type="button" onclick="mudarSlide(-1)" aria-label="Slide anterior">‹</button>
+                    <button class="carousel-btn" type="button" onclick="mudarSlide(1)" aria-label="Próximo slide">›</button>
+                </div>
+            </section>
+        </div>
+
+        <button id="fabMenu" class="fab" type="button" aria-label="Abrir menu">☰</button>
+        <nav id="floatingMenu" class="floating-menu" aria-label="Menu flutuante">
+            <h2>Navegação</h2>
+            {menu_html}
+        </nav>
+
+        <script>
+            const fabMenu = document.getElementById('fabMenu');
+            const floatingMenu = document.getElementById('floatingMenu');
+            fabMenu.addEventListener('click', function() {{
+                floatingMenu.classList.toggle('open');
+            }});
+            document.addEventListener('click', function(event) {{
+                if (!floatingMenu.contains(event.target) && event.target !== fabMenu) {{
+                    floatingMenu.classList.remove('open');
+                }}
+            }});
+
+            function filtrarMunicipios(estadoSelectId, municipioSelectId) {{
+                const estado = document.getElementById(estadoSelectId);
+                const municipio = document.getElementById(municipioSelectId);
+                if (!municipio) return;
+
+                if (!municipio._allOptions) {{
+                    municipio._allOptions = Array.from(municipio.options).map((opt) => ({{
+                        value: opt.value,
+                        text: opt.text,
+                        dono: opt.getAttribute('data-estado-id') || ''
+                    }}));
+                }}
+
+                const estadoId = estado ? estado.value : '';
+                const valorAtual = municipio.value;
+                const opcoesFiltradas = municipio._allOptions.filter((opt) => !estadoId || !opt.dono || opt.dono === estadoId);
+
+                municipio.innerHTML = '';
+                opcoesFiltradas.forEach((opt) => {{
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt.value;
+                    optionEl.text = opt.text;
+                    if (opt.dono) {{
+                        optionEl.setAttribute('data-estado-id', opt.dono);
+                    }}
+                    municipio.appendChild(optionEl);
+                }});
+
+                const aindaExiste = opcoesFiltradas.some((opt) => opt.value === valorAtual);
+                if (aindaExiste) {{
+                    municipio.value = valorAtual;
+                }} else if (municipio.options.length) {{
+                    municipio.selectedIndex = 0;
+                }}
+            }}
+
+            filtrarMunicipios('portal_estado_id', 'portal_municipio_id');
+
+            const track = document.getElementById('carouselTrack');
+            const totalSlides = track ? track.children.length : 0;
+            let slideAtual = 0;
+            let timerCarousel = null;
+
+            function atualizarCarousel() {{
+                if (!track || totalSlides <= 0) return;
+                track.style.transform = `translateX(${{-slideAtual * 100}}%)`;
+            }}
+
+            function mudarSlide(delta) {{
+                if (totalSlides <= 1) return;
+                slideAtual = (slideAtual + delta + totalSlides) % totalSlides;
+                atualizarCarousel();
+                reiniciarAutoCarousel();
+            }}
+
+            function reiniciarAutoCarousel() {{
+                if (timerCarousel) clearInterval(timerCarousel);
+                if (totalSlides <= 1) return;
+                timerCarousel = setInterval(function() {{
+                    slideAtual = (slideAtual + 1) % totalSlides;
+                    atualizarCarousel();
+                }}, 5000);
+            }}
+
+            atualizarCarousel();
+            reiniciarAutoCarousel();
+        </script>
+    </body>
+    </html>
+    """
