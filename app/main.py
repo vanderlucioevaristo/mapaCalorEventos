@@ -610,6 +610,40 @@ def atalho_inicio_mapa_html() -> str:
     '''
 
 
+def painel_filtro_mes_mapa_html(
+    meses_disponiveis: list[tuple[int, int]],
+    mes_selecionado: str,
+    acao_filtro: str,
+) -> str:
+    opcoes = ['<option value="Todos">Todos</option>']
+    for ano, mes in meses_disponiveis:
+        valor = f"{ano:04d}-{mes:02d}"
+        label_mes = meses_pt[mes] if 1 <= mes <= 12 else str(mes)
+        selected = " selected" if valor == mes_selecionado else ""
+        opcoes.append(f'<option value="{valor}"{selected}>{escape(label_mes)} {ano}</option>')
+
+    opcoes_html = "".join(opcoes)
+    return f'''
+    <div style="position: fixed;
+                top: 64px; right: 14px; z-index: 9999;
+                background: rgba(255,255,255,0.96);
+                border: 1px solid #d1d5db;
+                border-radius: 12px;
+                padding: 10px 12px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.14);">
+        <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0;">
+            <label for="filtro_mes" style="font-weight:700; color:#111827;">Mês:</label>
+            <select id="filtro_mes" name="mes" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:160px;">
+                {opcoes_html}
+            </select>
+            <button type="submit" style="padding:7px 10px; border:none; border-radius:8px; background:#1d4ed8; color:#fff; font-weight:700; cursor:pointer;">
+                Filtrar
+            </button>
+        </form>
+    </div>
+    '''
+
+
 def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str = "") -> str:
     estilo = (
         "display:inline-flex;align-items:center;gap:8px;"
@@ -4233,7 +4267,7 @@ def eventos_por_porte(request: Request, porte: str):
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos(request: Request, _publico: bool = False):
+def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
     if not _publico:
         redirect = _redirect_se_nao_autenticado(request)
         if redirect:
@@ -4248,6 +4282,28 @@ def mapa_eventos(request: Request, _publico: bool = False):
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id).all()
+        meses_disponiveis_set = {
+            (evento.data_inicio.year, evento.data_inicio.month)
+            for evento in eventos
+            if evento.data_inicio
+        }
+        meses_disponiveis = sorted(meses_disponiveis_set)
+        mes_selecionado = "Todos"
+        match_mes = re.fullmatch(r"(\d{4})-(\d{2})", (mes or "").strip())
+        if match_mes:
+            ano_sel = int(match_mes.group(1))
+            mes_sel = int(match_mes.group(2))
+            if (ano_sel, mes_sel) in meses_disponiveis_set:
+                mes_selecionado = f"{ano_sel:04d}-{mes_sel:02d}"
+                eventos = [
+                    evento
+                    for evento in eventos
+                    if evento.data_inicio
+                    and evento.data_inicio.year == ano_sel
+                    and evento.data_inicio.month == mes_sel
+                ]
+
+        acao_filtro_mapa = "/public/mapa" if _publico else "/mapa"
         anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
@@ -4260,6 +4316,15 @@ def mapa_eventos(request: Request, _publico: bool = False):
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
         mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(
+            folium.Element(
+                painel_filtro_mes_mapa_html(
+                    meses_disponiveis=meses_disponiveis,
+                    mes_selecionado=mes_selecionado,
+                    acao_filtro=acao_filtro_mapa,
+                )
+            )
+        )
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -4360,8 +4425,8 @@ def mapa_eventos(request: Request, _publico: bool = False):
 
 
 @app.get("/public/mapa", response_class=HTMLResponse)
-def mapa_eventos_publico(request: Request):
-    return mapa_eventos(request, _publico=True)
+def mapa_eventos_publico(request: Request, mes: str = "Todos"):
+    return mapa_eventos(request, mes=mes, _publico=True)
 
 
 @app.get("/calendario", response_class=HTMLResponse)
