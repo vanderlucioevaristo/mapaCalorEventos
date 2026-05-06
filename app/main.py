@@ -1091,6 +1091,8 @@ EMAILS_ADMIN = {
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
 USE_SOCIAL_LOGIN = REQUIRE_LOGIN and os.getenv("USE_SOCIAL_LOGIN", "true").lower() not in ("false", "0", "no")
+EXIBIR_ESQUECI_SENHA_LOGIN = os.getenv("EXIBIR_ESQUECI_SENHA_LOGIN", "true").lower() not in ("false", "0", "no")
+EXIBIR_BOTAO_CADASTRO_LOGIN = os.getenv("EXIBIR_BOTAO_CADASTRO_LOGIN", "true").lower() not in ("false", "0", "no")
 SENHA_SALT = os.getenv("PASSWORD_SALT", "eventos-bh-salt")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
@@ -1508,6 +1510,8 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
         return redirect
 
     exibir_logo_checked = "checked" if EXIBIR_LOGO else ""
+    exibir_esqueci_senha_login_checked = "checked" if EXIBIR_ESQUECI_SENHA_LOGIN else ""
+    exibir_botao_cadastro_login_checked = "checked" if EXIBIR_BOTAO_CADASTRO_LOGIN else ""
     exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
     exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
@@ -1597,6 +1601,16 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                 </label>
 
                 <label class="check">
+                    <input type="checkbox" name="exibir_esqueci_senha_login" value="1" {exibir_esqueci_senha_login_checked} />
+                    Exibir link "Esqueci minha senha" na tela de login
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_botao_cadastro_login" value="1" {exibir_botao_cadastro_login_checked} />
+                    Exibir botão de cadastro de usuários na tela de login
+                </label>
+
+                <label class="check">
                     <input type="checkbox" name="exibir_contagem_locais_mapa" value="1" {exibir_contagem_locais_checked} />
                     Exibir contagem por regional no mapa de locais
                 </label>
@@ -1646,6 +1660,8 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 def salvar_configuracoes(
     request: Request,
     exibir_logo: Optional[str] = Form(None),
+    exibir_esqueci_senha_login: Optional[str] = Form(None),
+    exibir_botao_cadastro_login: Optional[str] = Form(None),
     exibir_contagem_locais_mapa: Optional[str] = Form(None),
     exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     exibir_anunciantes_mapa: Optional[str] = Form(None),
@@ -1660,11 +1676,14 @@ def salvar_configuracoes(
     if redirect:
         return redirect
 
-    global EXIBIR_LOGO, LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
+    global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN
+    global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
     global PORTAL_COR_FUNDO, PORTAL_FONTE_TITULO, PORTAL_COR_BOTAO, PORTAL_COR_BOTAO_HOVER, PORTAL_COR_TEXTO_BOTAO
 
     try:
         novo_exibir_logo = bool(exibir_logo)
+        novo_exibir_esqueci_senha_login = bool(exibir_esqueci_senha_login)
+        novo_exibir_botao_cadastro_login = bool(exibir_botao_cadastro_login)
         novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
         novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
@@ -1676,6 +1695,14 @@ def salvar_configuracoes(
         nova_portal_cor_texto_botao = _normalizar_cor_hex(portal_cor_texto_botao, "#ffffff")
 
         _atualizar_variavel_env("EXIBIR_LOGO", "true" if novo_exibir_logo else "false")
+        _atualizar_variavel_env(
+            "EXIBIR_ESQUECI_SENHA_LOGIN",
+            "true" if novo_exibir_esqueci_senha_login else "false",
+        )
+        _atualizar_variavel_env(
+            "EXIBIR_BOTAO_CADASTRO_LOGIN",
+            "true" if novo_exibir_botao_cadastro_login else "false",
+        )
         _atualizar_variavel_env(
             "EXIBIR_CONTAGEM_LOCAIS_MAPA",
             "true" if novo_exibir_contagem_locais_mapa else "false",
@@ -1696,6 +1723,8 @@ def salvar_configuracoes(
         _atualizar_variavel_env("PORTAL_COR_TEXTO_BOTAO", nova_portal_cor_texto_botao)
 
         EXIBIR_LOGO = novo_exibir_logo
+        EXIBIR_ESQUECI_SENHA_LOGIN = novo_exibir_esqueci_senha_login
+        EXIBIR_BOTAO_CADASTRO_LOGIN = novo_exibir_botao_cadastro_login
         EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
         EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
@@ -1772,6 +1801,17 @@ def login_page(request: Request):
     if USE_SOCIAL_LOGIN:
         social_html = f'<div class="divider"></div>{botoes_html}{google_config_html}'
 
+    esqueci_senha_html = (
+        '<a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>'
+        if EXIBIR_ESQUECI_SENHA_LOGIN
+        else ""
+    )
+    cadastro_rapido_html = (
+        '<a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>'
+        if EXIBIR_BOTAO_CADASTRO_LOGIN
+        else ""
+    )
+
     return f"""
     <html>
     <head>
@@ -1847,8 +1887,8 @@ def login_page(request: Request):
                     <input class="input" id="senha" name="senha" type="password" required />
                     <button class="btn btn-alt" type="submit">Entrar</button>
                 </form>
-                <a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>
-                <a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>
+                {esqueci_senha_html}
+                {cadastro_rapido_html}
                 {social_html}
             </div>
         </div>
@@ -4238,6 +4278,11 @@ def mapa_locais(request: Request, _publico: bool = False):
         centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
         bounds_estado = _bounds_mapa_por_estado(db, estado_id)
         mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        mapa.get_root().header.add_child(
+            folium.Element(
+                f"<style>html, body {{ background: {PORTAL_COR_FUNDO}; }} .leaflet-container {{ background: {PORTAL_COR_FUNDO}; }}</style>"
+            )
+        )
         if bounds_estado:
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
@@ -4393,6 +4438,11 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
         centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
         bounds_estado = _bounds_mapa_por_estado(db, estado_id)
         mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        mapa.get_root().header.add_child(
+            folium.Element(
+                f"<style>html, body {{ background: {PORTAL_COR_FUNDO}; }} .leaflet-container {{ background: {PORTAL_COR_FUNDO}; }}</style>"
+            )
+        )
         if bounds_estado:
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
@@ -4592,7 +4642,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         <title>Calendário de Eventos - {LABEL_LOC}</title>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
-            body { font-family: Arial, sans-serif; }
+            body { font-family: Arial, sans-serif; background: {PORTAL_COR_FUNDO}; }
             .toolbar { margin: 10px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
             .toolbar label { font-weight: 700; color: #111827; }
             .toolbar select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d1d5db; }
@@ -4650,6 +4700,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     html = html.replace("{link_inicio}", link_inicio)
     html = html.replace("{acao_filtro}", acao_filtro)
     html = html.replace("{LABEL_LOC}", label_loc_escaped)
+    html = html.replace("{PORTAL_COR_FUNDO}", escape(PORTAL_COR_FUNDO))
 
     opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
     for tipo in TIPOS_EVENTO:
@@ -4744,7 +4795,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             const canvas = await html2canvas(area, {
                 scale: 2,
                 useCORS: true,
-                backgroundColor: '#ffffff'
+                backgroundColor: '{PORTAL_COR_FUNDO}'
             });
 
             // Força saída em paisagem no formato escolhido.
@@ -4765,7 +4816,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             canvasPaisagem.width = saidaLargura;
             canvasPaisagem.height = saidaAltura;
             const ctx = canvasPaisagem.getContext('2d');
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '{PORTAL_COR_FUNDO}';
             ctx.fillRect(0, 0, saidaLargura, saidaAltura);
 
             const escala = Math.min(saidaLargura / origemLargura, saidaAltura / origemAltura);
