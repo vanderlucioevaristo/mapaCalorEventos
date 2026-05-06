@@ -1091,6 +1091,7 @@ EMAILS_ADMIN = {
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
 USE_SOCIAL_LOGIN = REQUIRE_LOGIN and os.getenv("USE_SOCIAL_LOGIN", "true").lower() not in ("false", "0", "no")
+USAR_CONTEXTO_CIDADE = os.getenv("USAR_CONTEXTO_CIDADE", "true").lower() not in ("false", "0", "no")
 EXIBIR_ESQUECI_SENHA_LOGIN = os.getenv("EXIBIR_ESQUECI_SENHA_LOGIN", "true").lower() not in ("false", "0", "no")
 EXIBIR_BOTAO_CADASTRO_LOGIN = os.getenv("EXIBIR_BOTAO_CADASTRO_LOGIN", "true").lower() not in ("false", "0", "no")
 SENHA_SALT = os.getenv("PASSWORD_SALT", "eventos-bh-salt")
@@ -1169,6 +1170,37 @@ def _obter_localidade_sessao(request: Request, _publico: bool = False) -> tuple[
         municipio_id = int(municipio_id) if municipio_id is not None else None
     except (TypeError, ValueError):
         return (None, None)
+
+    if not USAR_CONTEXTO_CIDADE:
+        db: Session = SessionLocal()
+        try:
+            estado = db.query(Estado).filter(Estado.nome == ESTADO_PADRAO_NOME).first()
+            if not estado:
+                estado = db.query(Estado).filter(Estado.sigla == ESTADO_PADRAO_SIGLA).first()
+            if not estado:
+                estado = db.query(Estado).order_by(Estado.nome).first()
+            if not estado:
+                return (None, None)
+
+            municipio = (
+                db.query(Municipio)
+                .filter(Municipio.nome == MUNICIPIO_PADRAO_NOME, Municipio.estado_id == estado.id)
+                .first()
+            )
+            if not municipio:
+                municipio = (
+                    db.query(Municipio)
+                    .filter(Municipio.estado_id == estado.id)
+                    .order_by(Municipio.nome)
+                    .first()
+                )
+            if not municipio:
+                return (estado.id, None)
+
+            return (estado.id, municipio.id)
+        finally:
+            db.close()
+
     return (estado_id, municipio_id)
 
 
@@ -1515,6 +1547,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
     exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
+    usar_contexto_cidade_checked = "checked" if USAR_CONTEXTO_CIDADE else ""
     logo_url_valor = escape(LOGO_URL or "")
     portal_cor_fundo_valor = escape(PORTAL_COR_FUNDO)
     portal_cor_botao_valor = escape(PORTAL_COR_BOTAO)
@@ -1580,6 +1613,9 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
             input[type='text'] {{ width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }}
             .check {{ display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; }}
             .check input {{ width: 16px; height: 16px; }}
+            .check-highlight {{ margin-top: 0; padding: 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; align-items: flex-start; }}
+            .check-highlight span {{ display: block; }}
+            .check-help {{ margin-top: 4px; color: #92400e; font-size: 13px; font-weight: 500; }}
             .actions {{ margin-top: 18px; display: flex; gap: 10px; }}
             .btn {{ border: none; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }}
             .btn-primary {{ background: #1f2937; color: #fff; }}
@@ -1595,6 +1631,14 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
             <div class="desc">Altere os parâmetros globais de exibição do sistema.</div>
             {msg_html}
             <form method="post" action="/configuracoes">
+                <label class="check check-highlight">
+                    <input type="checkbox" name="usar_contexto_cidade" value="1" {usar_contexto_cidade_checked} />
+                    <span>
+                        Usar seletor de cidade/estado no sistema
+                        <span class="check-help">Quando desativado, o sistema usa automaticamente Minas Gerais e Belo Horizonte como contexto padrão.</span>
+                    </span>
+                </label>
+
                 <label class="check">
                     <input type="checkbox" name="exibir_logo" value="1" {exibir_logo_checked} />
                     Exibir logo nas páginas que usam essa configuração
@@ -1665,6 +1709,7 @@ def salvar_configuracoes(
     exibir_contagem_locais_mapa: Optional[str] = Form(None),
     exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     exibir_anunciantes_mapa: Optional[str] = Form(None),
+    usar_contexto_cidade: Optional[str] = Form(None),
     logo_url: str = Form(""),
     portal_cor_fundo: str = Form("#f8f9fb"),
     portal_fonte_titulo: str = Form("Avenir Next"),
@@ -1676,7 +1721,7 @@ def salvar_configuracoes(
     if redirect:
         return redirect
 
-    global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN
+    global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN, USAR_CONTEXTO_CIDADE
     global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
     global PORTAL_COR_FUNDO, PORTAL_FONTE_TITULO, PORTAL_COR_BOTAO, PORTAL_COR_BOTAO_HOVER, PORTAL_COR_TEXTO_BOTAO
 
@@ -1687,6 +1732,7 @@ def salvar_configuracoes(
         novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
         novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
+        novo_usar_contexto_cidade = bool(usar_contexto_cidade)
         nova_logo_url = (logo_url or "").strip()
         nova_portal_cor_fundo = _normalizar_cor_hex(portal_cor_fundo, "#f8f9fb")
         nova_portal_fonte_titulo = _normalizar_fonte_titulo(portal_fonte_titulo)
@@ -1715,6 +1761,10 @@ def salvar_configuracoes(
             "EXIBIR_ANUNCIANTES_MAPA",
             "true" if novo_exibir_anunciantes_mapa else "false",
         )
+        _atualizar_variavel_env(
+            "USAR_CONTEXTO_CIDADE",
+            "true" if novo_usar_contexto_cidade else "false",
+        )
         _atualizar_variavel_env("LOGO_URL", nova_logo_url)
         _atualizar_variavel_env("PORTAL_COR_FUNDO", nova_portal_cor_fundo)
         _atualizar_variavel_env("PORTAL_FONTE_TITULO", nova_portal_fonte_titulo)
@@ -1728,6 +1778,7 @@ def salvar_configuracoes(
         EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
         EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
+        USAR_CONTEXTO_CIDADE = novo_usar_contexto_cidade
         LOGO_URL = nova_logo_url
         PORTAL_COR_FUNDO = nova_portal_cor_fundo
         PORTAL_FONTE_TITULO = nova_portal_fonte_titulo
@@ -2251,6 +2302,26 @@ def home(request: Request):
             for m in municipios
         ]
     )
+    localidade_form_html = ""
+    if USAR_CONTEXTO_CIDADE:
+        localidade_form_html = f"""
+            <form class="localidade-form" method="post" action="/localidade">
+                <input type="hidden" name="next" value="/" />
+                <div>
+                    <label for="estado_id">Estado atual</label>
+                    <select id="estado_id" name="estado_id" onchange="filtrarMunicipios('estado_id','municipio_id')" required>
+                        {estados_options}
+                    </select>
+                </div>
+                <div>
+                    <label for="municipio_id">Município atual</label>
+                    <select id="municipio_id" name="municipio_id" required>
+                        {municipios_options}
+                    </select>
+                </div>
+                <button type="submit">Mudar localidade</button>
+            </form>
+        """
     titulo_font_css = _fonte_titulo_css()
 
     return f"""
@@ -2304,22 +2375,7 @@ def home(request: Request):
                 <span class="user">Conectado como: {user_name}</span>
                 <a class="logout" href="/logout">Sair</a>
             </div>
-            <form class="localidade-form" method="post" action="/localidade">
-                <input type="hidden" name="next" value="/" />
-                <div>
-                    <label for="estado_id">Estado atual</label>
-                    <select id="estado_id" name="estado_id" onchange="filtrarMunicipios('estado_id','municipio_id')" required>
-                        {estados_options}
-                    </select>
-                </div>
-                <div>
-                    <label for="municipio_id">Município atual</label>
-                    <select id="municipio_id" name="municipio_id" required>
-                        {municipios_options}
-                    </select>
-                </div>
-                <button type="submit">Mudar localidade</button>
-            </form>
+            {localidade_form_html}
             <p>Bem-vindo ao painel de eventos de {escape(label_loc)}. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             {aviso_acesso_html}
             <div class="menu">
@@ -2541,6 +2597,8 @@ def selecionar_localidade(request: Request):
     redirect = _redirect_se_nao_autenticado(request)
     if redirect:
         return redirect
+    if not USAR_CONTEXTO_CIDADE:
+        return RedirectResponse(url="/", status_code=303)
     return _render_pagina_localidade(request, _publico=False)
 
 
@@ -2554,6 +2612,8 @@ def salvar_localidade(
     redirect = _redirect_se_nao_autenticado(request)
     if redirect:
         return redirect
+    if not USAR_CONTEXTO_CIDADE:
+        return RedirectResponse(url=next or "/", status_code=303)
 
     db: Session = SessionLocal()
     try:
@@ -2568,6 +2628,8 @@ def salvar_localidade(
 
 @app.get("/public/localidade", response_class=HTMLResponse)
 def selecionar_localidade_publica(request: Request):
+    if not USAR_CONTEXTO_CIDADE:
+        return RedirectResponse(url="/public/visualizacao", status_code=303)
     return _render_pagina_localidade(request, _publico=True)
 
 
@@ -2578,6 +2640,9 @@ def salvar_localidade_publica(
     municipio_id: int = Form(...),
     next: str = Form("/public/visualizacao"),
 ):
+    if not USAR_CONTEXTO_CIDADE:
+        return RedirectResponse(url=next or "/public/visualizacao", status_code=303)
+
     db: Session = SessionLocal()
     try:
         if not _localidade_valida(db, estado_id, municipio_id):
@@ -4872,6 +4937,20 @@ def visualizacao_publica(request: Request):
             for m in municipios
         ]
     )
+    localidade_switch_html = ""
+    if USAR_CONTEXTO_CIDADE:
+        localidade_switch_html = """
+                    <form class="localidade-switch" method="post" action="/public/localidade">
+                        <input type="hidden" name="next" value="/public/visualizacao" />
+                        <select id="public_estado_id" name="estado_id" onchange="filtrarMunicipios('public_estado_id','public_municipio_id')" required>
+                            __ESTADOS_OPTIONS__
+                        </select>
+                        <select id="public_municipio_id" name="municipio_id" required>
+                            __MUNICIPIOS_OPTIONS__
+                        </select>
+                        <button type="submit">Mudar</button>
+                    </form>
+        """
 
     html = """
     <html>
@@ -5125,16 +5204,7 @@ def visualizacao_publica(request: Request):
                 <div class="topbar">
                     <button class="back-btn" id="btnVoltar" onclick="mostrarMenu()" style="display:none;">Voltar</button>
                     <div class="title" id="tituloAtual">Selecione um item no menu lateral</div>
-                    <form class="localidade-switch" method="post" action="/public/localidade">
-                        <input type="hidden" name="next" value="/public/visualizacao" />
-                        <select id="public_estado_id" name="estado_id" onchange="filtrarMunicipios('public_estado_id','public_municipio_id')" required>
-                            __ESTADOS_OPTIONS__
-                        </select>
-                        <select id="public_municipio_id" name="municipio_id" required>
-                            __MUNICIPIOS_OPTIONS__
-                        </select>
-                        <button type="submit">Mudar</button>
-                    </form>
+                    __LOCALIDADE_SWITCH__
                 </div>
                 <div class="frame-wrap" id="frameWrap">
                     <div class="intro" id="intro">Escolha Mapa ou Calendário no menu lateral.</div>
@@ -5214,6 +5284,7 @@ def visualizacao_publica(request: Request):
 
     html = html.replace("__ESTADOS_OPTIONS__", estados_options)
     html = html.replace("__MUNICIPIOS_OPTIONS__", municipios_options)
+    html = html.replace("__LOCALIDADE_SWITCH__", localidade_switch_html)
     html = html.replace("__LABEL_LOC__", label_loc_escaped)
     return html
 
@@ -5243,6 +5314,26 @@ def portal_publico(request: Request):
             for m in municipios
         ]
     )
+    contexto_form_html = ""
+    if USAR_CONTEXTO_CIDADE:
+        contexto_form_html = f"""
+            <form class="contexto" method="post" action="/public/localidade">
+                <input type="hidden" name="next" value="/public/portal" />
+                <div>
+                    <label for="portal_estado_id">Estado</label>
+                    <select id="portal_estado_id" name="estado_id" onchange="filtrarMunicipios('portal_estado_id','portal_municipio_id')" required>
+                        {estados_options}
+                    </select>
+                </div>
+                <div>
+                    <label for="portal_municipio_id">Município</label>
+                    <select id="portal_municipio_id" name="municipio_id" required>
+                        {municipios_options}
+                    </select>
+                </div>
+                <button type="submit">Aplicar contexto</button>
+            </form>
+        """
 
     hoje = datetime.now().date()
     inicio_mes = date(hoje.year, hoje.month, 1)
@@ -5529,22 +5620,7 @@ def portal_publico(request: Request):
                 <div class="status">{saudacao} · Contexto atual: <b>{label_loc_escaped}</b></div>
             </section>
 
-            <form class="contexto" method="post" action="/public/localidade">
-                <input type="hidden" name="next" value="/public/portal" />
-                <div>
-                    <label for="portal_estado_id">Estado</label>
-                    <select id="portal_estado_id" name="estado_id" onchange="filtrarMunicipios('portal_estado_id','portal_municipio_id')" required>
-                        {estados_options}
-                    </select>
-                </div>
-                <div>
-                    <label for="portal_municipio_id">Município</label>
-                    <select id="portal_municipio_id" name="municipio_id" required>
-                        {municipios_options}
-                    </select>
-                </div>
-                <button type="submit">Aplicar contexto</button>
-            </form>
+            {contexto_form_html}
 
             <h2 class="section-title">Eventos do mês corrente em {label_loc_escaped}</h2>
             <section class="carousel-shell" aria-label="Carrossel de eventos do mês">
