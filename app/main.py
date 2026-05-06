@@ -610,15 +610,49 @@ def atalho_inicio_mapa_html() -> str:
     '''
 
 
+def painel_filtro_mes_mapa_html(
+    meses_disponiveis: list[tuple[int, int]],
+    mes_selecionado: str,
+    acao_filtro: str,
+) -> str:
+    opcoes = ['<option value="Todos">Todos</option>']
+    for ano, mes in meses_disponiveis:
+        valor = f"{ano:04d}-{mes:02d}"
+        label_mes = meses_pt[mes] if 1 <= mes <= 12 else str(mes)
+        selected = " selected" if valor == mes_selecionado else ""
+        opcoes.append(f'<option value="{valor}"{selected}>{escape(label_mes)} {ano}</option>')
+
+    opcoes_html = "".join(opcoes)
+    return f'''
+    <div style="position: fixed;
+                top: 64px; right: 14px; z-index: 9999;
+                background: rgba(255,255,255,0.96);
+                border: 1px solid #d1d5db;
+                border-radius: 12px;
+                padding: 10px 12px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.14);">
+        <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0;">
+            <label for="filtro_mes" style="font-weight:700; color:#111827;">Mês:</label>
+            <select id="filtro_mes" name="mes" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:160px;">
+                {opcoes_html}
+            </select>
+            <button type="submit" style="padding:7px 10px; border:none; border-radius:8px; background:#1d4ed8; color:#fff; font-weight:700; cursor:pointer;">
+                Filtrar
+            </button>
+        </form>
+    </div>
+    '''
+
+
 def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str = "") -> str:
     estilo = (
         "display:inline-flex;align-items:center;gap:8px;"
         "padding:10px 14px;border-radius:999px;"
-        "background:#ffffff;color:#0f172a;text-decoration:none;font-weight:700;"
+        f"background:{PORTAL_COR_BOTAO};color:{PORTAL_COR_TEXTO_BOTAO};text-decoration:none;font-weight:700;"
         "border:1px solid #d7e2ee;box-shadow:0 8px 20px rgba(15,23,42,0.10);"
         + (extra_style or "")
     )
-    return f'<a href="/public/portal" style="{estilo}">&#8592; {escape(label)}</a>'
+    return f'<a href="{PORTAL_PUBLICO_PATH}" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
 def recursos_rota_mapa_html(map_name: str) -> str:
@@ -1057,6 +1091,8 @@ EMAILS_ADMIN = {
 
 REQUIRE_LOGIN = os.getenv("REQUIRE_LOGIN", "true").lower() not in ("false", "0", "no")
 USE_SOCIAL_LOGIN = REQUIRE_LOGIN and os.getenv("USE_SOCIAL_LOGIN", "true").lower() not in ("false", "0", "no")
+EXIBIR_ESQUECI_SENHA_LOGIN = os.getenv("EXIBIR_ESQUECI_SENHA_LOGIN", "true").lower() not in ("false", "0", "no")
+EXIBIR_BOTAO_CADASTRO_LOGIN = os.getenv("EXIBIR_BOTAO_CADASTRO_LOGIN", "true").lower() not in ("false", "0", "no")
 SENHA_SALT = os.getenv("PASSWORD_SALT", "eventos-bh-salt")
 EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
@@ -1066,6 +1102,38 @@ LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
 ).strip()
+PORTAL_PUBLICO_PATH = "/public/portal"
+FONTES_TITULO_DISPONIVEIS = {
+    "Avenir Next": '"Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif',
+    "Georgia": '"Georgia", "Times New Roman", serif',
+    "Trebuchet MS": '"Trebuchet MS", "Segoe UI", sans-serif',
+    "Palatino": '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+}
+
+
+def _normalizar_cor_hex(valor: str, padrao: str) -> str:
+    texto = (valor or "").strip()
+    if re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", texto):
+        return texto
+    return padrao
+
+
+def _normalizar_fonte_titulo(valor: str) -> str:
+    nome = (valor or "").strip()
+    if nome in FONTES_TITULO_DISPONIVEIS:
+        return nome
+    return "Avenir Next"
+
+
+PORTAL_COR_FUNDO = _normalizar_cor_hex(os.getenv("PORTAL_COR_FUNDO", "#f8f9fb"), "#f8f9fb")
+PORTAL_COR_BOTAO = _normalizar_cor_hex(os.getenv("PORTAL_COR_BOTAO", "#0f766e"), "#0f766e")
+PORTAL_COR_BOTAO_HOVER = _normalizar_cor_hex(os.getenv("PORTAL_COR_BOTAO_HOVER", "#0b5f58"), "#0b5f58")
+PORTAL_COR_TEXTO_BOTAO = _normalizar_cor_hex(os.getenv("PORTAL_COR_TEXTO_BOTAO", "#ffffff"), "#ffffff")
+PORTAL_FONTE_TITULO = _normalizar_fonte_titulo(os.getenv("PORTAL_FONTE_TITULO", "Avenir Next"))
+
+
+def _fonte_titulo_css() -> str:
+    return FONTES_TITULO_DISPONIVEIS.get(PORTAL_FONTE_TITULO, FONTES_TITULO_DISPONIVEIS["Avenir Next"])
 
 
 def _usuario_atual(request: Request) -> dict:
@@ -1442,10 +1510,22 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
         return redirect
 
     exibir_logo_checked = "checked" if EXIBIR_LOGO else ""
+    exibir_esqueci_senha_login_checked = "checked" if EXIBIR_ESQUECI_SENHA_LOGIN else ""
+    exibir_botao_cadastro_login_checked = "checked" if EXIBIR_BOTAO_CADASTRO_LOGIN else ""
     exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
     exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
     logo_url_valor = escape(LOGO_URL or "")
+    portal_cor_fundo_valor = escape(PORTAL_COR_FUNDO)
+    portal_cor_botao_valor = escape(PORTAL_COR_BOTAO)
+    portal_cor_botao_hover_valor = escape(PORTAL_COR_BOTAO_HOVER)
+    portal_cor_texto_botao_valor = escape(PORTAL_COR_TEXTO_BOTAO)
+    opcoes_fonte_titulo_html = "".join(
+        [
+            f'<option value="{escape(nome)}" {"selected" if nome == PORTAL_FONTE_TITULO else ""}>{escape(nome)}</option>'
+            for nome in FONTES_TITULO_DISPONIVEIS.keys()
+        ]
+    )
     msg_html = ""
     if msg == "ok":
         msg_html = '<div class="msg ok">Configurações salvas com sucesso.</div>'
@@ -1521,6 +1601,16 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                 </label>
 
                 <label class="check">
+                    <input type="checkbox" name="exibir_esqueci_senha_login" value="1" {exibir_esqueci_senha_login_checked} />
+                    Exibir link "Esqueci minha senha" na tela de login
+                </label>
+
+                <label class="check">
+                    <input type="checkbox" name="exibir_botao_cadastro_login" value="1" {exibir_botao_cadastro_login_checked} />
+                    Exibir botão de cadastro de usuários na tela de login
+                </label>
+
+                <label class="check">
                     <input type="checkbox" name="exibir_contagem_locais_mapa" value="1" {exibir_contagem_locais_checked} />
                     Exibir contagem por regional no mapa de locais
                 </label>
@@ -1538,6 +1628,23 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                 <label for="logo_url">URL do logo</label>
                 <input id="logo_url" type="text" name="logo_url" value="{logo_url_valor}" placeholder="https://..." />
 
+                <label for="portal_cor_fundo">Cor de fundo das telas do portal</label>
+                <input id="portal_cor_fundo" type="color" name="portal_cor_fundo" value="{portal_cor_fundo_valor}" />
+
+                <label for="portal_fonte_titulo">Fonte dos títulos do portal</label>
+                <select id="portal_fonte_titulo" name="portal_fonte_titulo">
+                    {opcoes_fonte_titulo_html}
+                </select>
+
+                <label for="portal_cor_botao">Cor principal dos botões</label>
+                <input id="portal_cor_botao" type="color" name="portal_cor_botao" value="{portal_cor_botao_valor}" />
+
+                <label for="portal_cor_botao_hover">Cor de hover dos botões</label>
+                <input id="portal_cor_botao_hover" type="color" name="portal_cor_botao_hover" value="{portal_cor_botao_hover_valor}" />
+
+                <label for="portal_cor_texto_botao">Cor do texto dos botões</label>
+                <input id="portal_cor_texto_botao" type="color" name="portal_cor_texto_botao" value="{portal_cor_texto_botao_valor}" />
+
                 <div class="actions">
                     <button class="btn btn-primary" type="submit">Salvar</button>
                     {botao_voltar_portal_html()}
@@ -1553,25 +1660,49 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 def salvar_configuracoes(
     request: Request,
     exibir_logo: Optional[str] = Form(None),
+    exibir_esqueci_senha_login: Optional[str] = Form(None),
+    exibir_botao_cadastro_login: Optional[str] = Form(None),
     exibir_contagem_locais_mapa: Optional[str] = Form(None),
     exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     exibir_anunciantes_mapa: Optional[str] = Form(None),
     logo_url: str = Form(""),
+    portal_cor_fundo: str = Form("#f8f9fb"),
+    portal_fonte_titulo: str = Form("Avenir Next"),
+    portal_cor_botao: str = Form("#0f766e"),
+    portal_cor_botao_hover: str = Form("#0b5f58"),
+    portal_cor_texto_botao: str = Form("#ffffff"),
 ):
     redirect = _redirect_se_nao_super_admin(request)
     if redirect:
         return redirect
 
-    global EXIBIR_LOGO, LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
+    global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN
+    global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
+    global PORTAL_COR_FUNDO, PORTAL_FONTE_TITULO, PORTAL_COR_BOTAO, PORTAL_COR_BOTAO_HOVER, PORTAL_COR_TEXTO_BOTAO
 
     try:
         novo_exibir_logo = bool(exibir_logo)
+        novo_exibir_esqueci_senha_login = bool(exibir_esqueci_senha_login)
+        novo_exibir_botao_cadastro_login = bool(exibir_botao_cadastro_login)
         novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
         novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
         nova_logo_url = (logo_url or "").strip()
+        nova_portal_cor_fundo = _normalizar_cor_hex(portal_cor_fundo, "#f8f9fb")
+        nova_portal_fonte_titulo = _normalizar_fonte_titulo(portal_fonte_titulo)
+        nova_portal_cor_botao = _normalizar_cor_hex(portal_cor_botao, "#0f766e")
+        nova_portal_cor_botao_hover = _normalizar_cor_hex(portal_cor_botao_hover, "#0b5f58")
+        nova_portal_cor_texto_botao = _normalizar_cor_hex(portal_cor_texto_botao, "#ffffff")
 
         _atualizar_variavel_env("EXIBIR_LOGO", "true" if novo_exibir_logo else "false")
+        _atualizar_variavel_env(
+            "EXIBIR_ESQUECI_SENHA_LOGIN",
+            "true" if novo_exibir_esqueci_senha_login else "false",
+        )
+        _atualizar_variavel_env(
+            "EXIBIR_BOTAO_CADASTRO_LOGIN",
+            "true" if novo_exibir_botao_cadastro_login else "false",
+        )
         _atualizar_variavel_env(
             "EXIBIR_CONTAGEM_LOCAIS_MAPA",
             "true" if novo_exibir_contagem_locais_mapa else "false",
@@ -1585,12 +1716,24 @@ def salvar_configuracoes(
             "true" if novo_exibir_anunciantes_mapa else "false",
         )
         _atualizar_variavel_env("LOGO_URL", nova_logo_url)
+        _atualizar_variavel_env("PORTAL_COR_FUNDO", nova_portal_cor_fundo)
+        _atualizar_variavel_env("PORTAL_FONTE_TITULO", nova_portal_fonte_titulo)
+        _atualizar_variavel_env("PORTAL_COR_BOTAO", nova_portal_cor_botao)
+        _atualizar_variavel_env("PORTAL_COR_BOTAO_HOVER", nova_portal_cor_botao_hover)
+        _atualizar_variavel_env("PORTAL_COR_TEXTO_BOTAO", nova_portal_cor_texto_botao)
 
         EXIBIR_LOGO = novo_exibir_logo
+        EXIBIR_ESQUECI_SENHA_LOGIN = novo_exibir_esqueci_senha_login
+        EXIBIR_BOTAO_CADASTRO_LOGIN = novo_exibir_botao_cadastro_login
         EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
         EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
         LOGO_URL = nova_logo_url
+        PORTAL_COR_FUNDO = nova_portal_cor_fundo
+        PORTAL_FONTE_TITULO = nova_portal_fonte_titulo
+        PORTAL_COR_BOTAO = nova_portal_cor_botao
+        PORTAL_COR_BOTAO_HOVER = nova_portal_cor_botao_hover
+        PORTAL_COR_TEXTO_BOTAO = nova_portal_cor_texto_botao
         return RedirectResponse(url="/configuracoes?msg=ok", status_code=303)
     except Exception:
         return RedirectResponse(url="/configuracoes?msg=erro", status_code=303)
@@ -1598,7 +1741,7 @@ def salvar_configuracoes(
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     if not REQUIRE_LOGIN:
         return RedirectResponse(url=next_path, status_code=303)
     if request.session.get("user"):
@@ -1657,6 +1800,17 @@ def login_page(request: Request):
     social_html = ""
     if USE_SOCIAL_LOGIN:
         social_html = f'<div class="divider"></div>{botoes_html}{google_config_html}'
+
+    esqueci_senha_html = (
+        '<a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>'
+        if EXIBIR_ESQUECI_SENHA_LOGIN
+        else ""
+    )
+    cadastro_rapido_html = (
+        '<a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>'
+        if EXIBIR_BOTAO_CADASTRO_LOGIN
+        else ""
+    )
 
     return f"""
     <html>
@@ -1733,8 +1887,8 @@ def login_page(request: Request):
                     <input class="input" id="senha" name="senha" type="password" required />
                     <button class="btn btn-alt" type="submit">Entrar</button>
                 </form>
-                <a class="link-action" href="/esqueci-senha">Esqueci minha senha</a>
-                <a class="btn btn-lite" href="/cadastro-rapido">Não tem cadastro? Registre-se aqui!</a>
+                {esqueci_senha_html}
+                {cadastro_rapido_html}
                 {social_html}
             </div>
         </div>
@@ -1748,9 +1902,9 @@ def login_local(
     request: Request,
     identificador: str = Form(...),
     senha: str = Form(...),
-    next: str = Form("/"),
+    next: str = Form(PORTAL_PUBLICO_PATH),
 ):
-    next_path = _next_path_or_default(next, "/")
+    next_path = _next_path_or_default(next, PORTAL_PUBLICO_PATH)
     if not REQUIRE_LOGIN:
         return RedirectResponse(url=next_path, status_code=303)
 
@@ -1778,9 +1932,9 @@ def login_local(
 @app.get("/esqueci-senha", response_class=HTMLResponse)
 def esqueci_senha_page(request: Request):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
     if request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     msg = request.query_params.get("msg")
     msg_html = ""
@@ -1874,7 +2028,7 @@ def esqueci_senha(
     confirmar_senha: str = Form(...),
 ):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     if len((nova_senha or "")) < 6:
         return RedirectResponse(url="/esqueci-senha?msg=senha_curta", status_code=303)
@@ -1902,10 +2056,10 @@ def esqueci_senha(
 @app.get("/cadastro-rapido", response_class=HTMLResponse)
 def cadastro_rapido_page(request: Request):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     if request.session.get("user"):
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     return """
     <html>
@@ -1951,7 +2105,7 @@ def cadastro_rapido_page(request: Request):
 @app.post("/cadastro-rapido")
 def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Form(...), senha: str = Form(...)):
     if not REQUIRE_LOGIN:
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=PORTAL_PUBLICO_PATH, status_code=303)
 
     nome_limpo = (nome or "").strip()
     email_limpo = (email or "").strip().lower()
@@ -1982,14 +2136,14 @@ def cadastro_rapido(nome: str = Form(...), email: str = Form(...), cpf: str = Fo
 
 @app.get("/logout")
 def logout(request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/login")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     request.session.clear()
     return RedirectResponse(url=next_path, status_code=303)
 
 
 @app.get("/auth/{provider}/login")
 async def oauth_login(provider: str, request: Request):
-    next_path = _next_path_or_default(request.query_params.get("next"), "/")
+    next_path = _next_path_or_default(request.query_params.get("next"), PORTAL_PUBLICO_PATH)
     if not USE_SOCIAL_LOGIN:
         return RedirectResponse(url=f"/login?next={quote_plus(next_path)}", status_code=303)
 
@@ -2011,7 +2165,10 @@ async def oauth_callback(provider: str, request: Request):
     if not client:
         return RedirectResponse(url="/login", status_code=303)
 
-    next_path = _next_path_or_default(request.session.pop("oauth_next", "/"), "/")
+    next_path = _next_path_or_default(
+        request.session.pop("oauth_next", PORTAL_PUBLICO_PATH),
+        PORTAL_PUBLICO_PATH,
+    )
 
     try:
         token = await client.authorize_access_token(request)
@@ -2094,6 +2251,7 @@ def home(request: Request):
             for m in municipios
         ]
     )
+    titulo_font_css = _fonte_titulo_css()
 
     return f"""
     <html>
@@ -2118,23 +2276,25 @@ def home(request: Request):
             </style>
         <title>Eventos - {escape(label_loc)}</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background: #f8f9fb; margin: 0; padding: 0; }}
+            body {{ font-family: Arial, sans-serif; background: {PORTAL_COR_FUNDO}; margin: 0; padding: 0; }}
             .page {{ max-width: 900px; margin: 40px auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.08); }}
             .top {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
-            .logout {{ text-decoration: none; background: #1f2937; color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: 700; }}
+            .logout {{ text-decoration: none; background: {PORTAL_COR_BOTAO}; color: {PORTAL_COR_TEXTO_BOTAO}; padding: 8px 12px; border-radius: 8px; font-weight: 700; }}
+            .logout:hover {{ background: {PORTAL_COR_BOTAO_HOVER}; }}
             .user {{ color: #374151; font-size: 14px; margin-right: auto; margin-left: 12px; }}
-            h1 {{ margin-top: 0; color: #1f2937; }}
+            h1 {{ margin-top: 0; color: #1f2937; font-family: {titulo_font_css}; }}
             p {{ color: #4b5563; font-size: 16px; line-height: 1.6; }}
             .menu {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }}
             .card {{ flex: 1 1 250px; min-width: 220px; padding: 24px; border-radius: 14px; background: #eef2ff; color: #1f2937; text-decoration: none; box-shadow: 0 8px 24px rgba(15,23,42,0.08); transition: transform 0.2s ease, box-shadow 0.2s ease; }}
             .card:hover {{ transform: translateY(-3px); box-shadow: 0 16px 32px rgba(15,23,42,0.16); }}
-            .card h2 {{ margin: 0 0 10px; font-size: 22px; }}
+            .card h2 {{ margin: 0 0 10px; font-size: 22px; font-family: {titulo_font_css}; }}
             .card p {{ margin: 0; color: #374151; }}
             .footer {{ margin-top: 32px; font-size: 14px; color: #6b7280; }}
             .localidade-form {{ margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }}
             .localidade-form label {{ display: block; font-size: 12px; color: #374151; margin-bottom: 4px; font-weight: 700; }}
             .localidade-form select {{ width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }}
-            .localidade-form button {{ border: none; border-radius: 8px; background: #0f766e; color: #fff; padding: 9px 12px; font-weight: 700; cursor: pointer; }}
+            .localidade-form button {{ border: none; border-radius: 8px; background: {PORTAL_COR_BOTAO}; color: {PORTAL_COR_TEXTO_BOTAO}; padding: 9px 12px; font-weight: 700; cursor: pointer; }}
+            .localidade-form button:hover {{ background: {PORTAL_COR_BOTAO_HOVER}; }}
         </style>
     </head>
     <body>
@@ -4118,12 +4278,16 @@ def mapa_locais(request: Request, _publico: bool = False):
         centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
         bounds_estado = _bounds_mapa_por_estado(db, estado_id)
         mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        mapa.get_root().header.add_child(
+            folium.Element(
+                f"<style>html, body {{ background: {PORTAL_COR_FUNDO}; }} .leaflet-container {{ background: {PORTAL_COR_FUNDO}; }}</style>"
+            )
+        )
         if bounds_estado:
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        if not _publico:
-            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         locais_mostrados = 0
         contagem_por_regional = {}
@@ -4230,7 +4394,7 @@ def eventos_por_porte(request: Request, porte: str):
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos(request: Request, _publico: bool = False):
+def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
     if not _publico:
         redirect = _redirect_se_nao_autenticado(request)
         if redirect:
@@ -4245,6 +4409,28 @@ def mapa_eventos(request: Request, _publico: bool = False):
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id).all()
+        meses_disponiveis_set = {
+            (evento.data_inicio.year, evento.data_inicio.month)
+            for evento in eventos
+            if evento.data_inicio
+        }
+        meses_disponiveis = sorted(meses_disponiveis_set)
+        mes_selecionado = "Todos"
+        match_mes = re.fullmatch(r"(\d{4})-(\d{2})", (mes or "").strip())
+        if match_mes:
+            ano_sel = int(match_mes.group(1))
+            mes_sel = int(match_mes.group(2))
+            if (ano_sel, mes_sel) in meses_disponiveis_set:
+                mes_selecionado = f"{ano_sel:04d}-{mes_sel:02d}"
+                eventos = [
+                    evento
+                    for evento in eventos
+                    if evento.data_inicio
+                    and evento.data_inicio.year == ano_sel
+                    and evento.data_inicio.month == mes_sel
+                ]
+
+        acao_filtro_mapa = "/public/mapa" if _publico else "/mapa"
         anunciantes = db.query(Anunciante).all()
         regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
         data_referencia = datetime.now().date()
@@ -4252,12 +4438,25 @@ def mapa_eventos(request: Request, _publico: bool = False):
         centro_lat, centro_lon, zoom_estado = _centro_mapa_por_estado(db, estado_id)
         bounds_estado = _bounds_mapa_por_estado(db, estado_id)
         mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=zoom_estado)
+        mapa.get_root().header.add_child(
+            folium.Element(
+                f"<style>html, body {{ background: {PORTAL_COR_FUNDO}; }} .leaflet-container {{ background: {PORTAL_COR_FUNDO}; }}</style>"
+            )
+        )
         if bounds_estado:
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        if not _publico:
-            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        mapa.get_root().html.add_child(
+            folium.Element(
+                painel_filtro_mes_mapa_html(
+                    meses_disponiveis=meses_disponiveis,
+                    mes_selecionado=mes_selecionado,
+                    acao_filtro=acao_filtro_mapa,
+                )
+            )
+        )
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
@@ -4358,8 +4557,8 @@ def mapa_eventos(request: Request, _publico: bool = False):
 
 
 @app.get("/public/mapa", response_class=HTMLResponse)
-def mapa_eventos_publico(request: Request):
-    return mapa_eventos(request, _publico=True)
+def mapa_eventos_publico(request: Request, mes: str = "Todos"):
+    return mapa_eventos(request, mes=mes, _publico=True)
 
 
 @app.get("/calendario", response_class=HTMLResponse)
@@ -4382,6 +4581,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
     else:
         acao_filtro = "/public/calendario"
+        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
 
     db: Session = SessionLocal()
     estados_db = db.query(Estado).order_by(Estado.nome).all()
@@ -4442,7 +4642,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
         <title>Calendário de Eventos - {LABEL_LOC}</title>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
         <style>
-            body { font-family: Arial, sans-serif; }
+            body { font-family: Arial, sans-serif; background: {PORTAL_COR_FUNDO}; }
             .toolbar { margin: 10px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
             .toolbar label { font-weight: 700; color: #111827; }
             .toolbar select { padding: 8px 10px; border-radius: 8px; border: 1px solid #d1d5db; }
@@ -4500,6 +4700,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     html = html.replace("{link_inicio}", link_inicio)
     html = html.replace("{acao_filtro}", acao_filtro)
     html = html.replace("{LABEL_LOC}", label_loc_escaped)
+    html = html.replace("{PORTAL_COR_FUNDO}", escape(PORTAL_COR_FUNDO))
 
     opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
     for tipo in TIPOS_EVENTO:
@@ -4594,7 +4795,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             const canvas = await html2canvas(area, {
                 scale: 2,
                 useCORS: true,
-                backgroundColor: '#ffffff'
+                backgroundColor: '{PORTAL_COR_FUNDO}'
             });
 
             // Força saída em paisagem no formato escolhido.
@@ -4615,7 +4816,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             canvasPaisagem.width = saidaLargura;
             canvasPaisagem.height = saidaAltura;
             const ctx = canvasPaisagem.getContext('2d');
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '{PORTAL_COR_FUNDO}';
             ctx.fillRect(0, 0, saidaLargura, saidaAltura);
 
             const escala = Math.min(saidaLargura / origemLargura, saidaAltura / origemAltura);
@@ -5150,6 +5351,7 @@ def portal_publico(request: Request):
 
     menu_html = "".join(itens_menu)
     saudacao = f"Conectado como: {user_name}" if is_logado else "Acesso público"
+    titulo_font_css = _fonte_titulo_css()
 
     return f"""
     <html>
@@ -5158,12 +5360,13 @@ def portal_publico(request: Request):
         <title>Portal Público de Eventos - {label_loc_escaped}</title>
         <style>
             :root {{
-                --bg: #f3f7fb;
+                --bg: {PORTAL_COR_FUNDO};
                 --ink: #0f172a;
                 --muted: #475569;
                 --line: #d7e2ee;
-                --brand: #0f766e;
-                --brand-strong: #0b5f58;
+                --brand: {PORTAL_COR_BOTAO};
+                --brand-strong: {PORTAL_COR_BOTAO_HOVER};
+                --button-ink: {PORTAL_COR_TEXTO_BOTAO};
                 --sun: #f59e0b;
             }}
             * {{ box-sizing: border-box; }}
@@ -5171,7 +5374,7 @@ def portal_publico(request: Request):
                 margin: 0;
                 font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
                 color: var(--ink);
-                background: radial-gradient(circle at 9% 8%, #ffffff 0, #eef4f9 48%, #e5eef7 100%);
+                background: var(--bg);
             }}
             .page {{ max-width: 1100px; margin: 0 auto; padding: 22px 18px 90px; }}
             .hero {{
@@ -5181,7 +5384,7 @@ def portal_publico(request: Request):
                 padding: 20px;
                 box-shadow: 0 14px 34px rgba(11, 77, 104, 0.24);
             }}
-            .hero h1 {{ margin: 0 0 8px; font-size: 1.6rem; }}
+            .hero h1 {{ margin: 0 0 8px; font-size: 1.6rem; font-family: {titulo_font_css}; }}
             .hero p {{ margin: 0; opacity: 0.95; }}
             .status {{ margin-top: 8px; font-size: 0.92rem; opacity: 0.95; }}
 
@@ -5198,10 +5401,10 @@ def portal_publico(request: Request):
             }}
             .contexto label {{ display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 4px; }}
             .contexto select {{ width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #cbd5e1; }}
-            .contexto button {{ border: 0; border-radius: 10px; padding: 10px 12px; color: #fff; background: var(--brand); font-weight: 700; cursor: pointer; }}
+            .contexto button {{ border: 0; border-radius: 10px; padding: 10px 12px; color: var(--button-ink); background: var(--brand); font-weight: 700; cursor: pointer; }}
             .contexto button:hover {{ background: var(--brand-strong); }}
 
-            .section-title {{ margin: 24px 0 12px; font-size: 1.2rem; color: #0f172a; }}
+            .section-title {{ margin: 24px 0 12px; font-size: 1.2rem; color: #0f172a; font-family: {titulo_font_css}; }}
             .carousel-shell {{
                 position: relative;
                 border: 1px solid var(--line);
@@ -5224,7 +5427,7 @@ def portal_publico(request: Request):
                     radial-gradient(circle at 10% 86%, rgba(245,158,11,0.10) 0, transparent 44%),
                     #fff;
             }}
-            .carousel-item h3 {{ margin: 8px 0; font-size: 1.25rem; }}
+            .carousel-item h3 {{ margin: 8px 0; font-size: 1.25rem; font-family: {titulo_font_css}; }}
             .carousel-item p {{ margin: 6px 0; color: var(--muted); }}
             .chip {{
                 display: inline-block;
@@ -5266,8 +5469,8 @@ def portal_publico(request: Request):
                 border-radius: 999px;
                 width: 58px;
                 height: 58px;
-                background: linear-gradient(140deg, #0f766e, #0b4d68);
-                color: #fff;
+                background: linear-gradient(140deg, var(--brand), var(--brand-strong));
+                color: var(--button-ink);
                 font-size: 1.4rem;
                 font-weight: 900;
                 cursor: pointer;
