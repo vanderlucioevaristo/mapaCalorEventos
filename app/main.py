@@ -644,7 +644,11 @@ def painel_filtro_mes_mapa_html(
     '''
 
 
-def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str = "") -> str:
+def botao_voltar_portal_html(
+    label: str = "Voltar ao portal",
+    extra_style: str = "",
+    usar_historico: bool = False,
+) -> str:
     estilo = (
         "display:inline-flex;align-items:center;gap:8px;"
         "padding:10px 14px;border-radius:999px;"
@@ -652,6 +656,12 @@ def botao_voltar_portal_html(label: str = "Voltar ao portal", extra_style: str =
         "border:1px solid #d7e2ee;box-shadow:0 8px 20px rgba(15,23,42,0.10);"
         + (extra_style or "")
     )
+    if usar_historico:
+        return (
+            f'<a href="{PORTAL_PUBLICO_PATH}" '
+            f'onclick="if (window.history.length > 1) {{ history.back(); return false; }}" '
+            f'style="{estilo}">&#8592; {escape(label)}</a>'
+        )
     return f'<a href="{PORTAL_PUBLICO_PATH}" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
@@ -4643,10 +4653,10 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     link_inicio = ""
     acao_filtro = "/calendario"
     if not _publico:
-        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
+        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;', usar_historico=True)
     else:
         acao_filtro = "/public/calendario"
-        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;')
+        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;', usar_historico=True)
 
     db: Session = SessionLocal()
     estados_db = db.query(Estado).order_by(Estado.nome).all()
