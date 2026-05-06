@@ -4283,7 +4283,7 @@ def mapa_locais(request: Request, _publico: bool = False):
                 f"<style>html, body {{ background: {PORTAL_COR_FUNDO}; }} .leaflet-container {{ background: {PORTAL_COR_FUNDO}; }}</style>"
             )
         )
-        if bounds_estado:
+        if bounds_estado: 
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
@@ -4661,7 +4661,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
             .infra-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-size: 12px; }
             table { border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; font-size: 16px; }
             .evento { margin: 2px 0; padding: 2px; border-radius: 3px; }
         </style>
