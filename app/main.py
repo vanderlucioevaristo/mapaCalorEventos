@@ -4746,11 +4746,11 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             .filtro-wrap select { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; min-width: 170px; }
             .filtro-wrap button { padding: 8px 14px; border-radius: 6px; border: none; background: #1f2937; color: #fff; font-weight: 600; cursor: pointer; }
             .filtro-wrap button:hover { background: #111827; }
-            .legenda { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
+            .legenda { display: flex; gap: 10px; justify-content: flex-start; flex-wrap: wrap; margin: 20px; width: calc(100% - 40px); box-sizing: border-box; }
             .regiao-box { padding: 10px 20px; border-radius: 5px; color: white; font-weight: bold; }
             .infra-icons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
             .infra-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-size: 12px; }
-            table { border-collapse: collapse; width: 100%; margin: 20px; font-size: 14px; }
+            table { border-collapse: collapse; width: calc(100% - 40px); margin: 20px; font-size: 14px; }
             th, td { border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; font-size: 16px; }
             .evento { margin: 2px 0; padding: 2px; border-radius: 3px; }
