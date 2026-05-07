@@ -4652,7 +4652,12 @@ def mapa_eventos_publico(request: Request, mes: str = "Todos"):
 
 
 @app.get("/calendario", response_class=HTMLResponse)
-def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: bool = False):
+def calendario_eventos(
+    request: Request,
+    tipo_evento: str = "Todos",
+    ano: Optional[int] = None,
+    _publico: bool = False,
+):
     if not _publico:
         redirect = _redirect_se_nao_autenticado(request)
         if redirect:
@@ -4664,6 +4669,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
 
     _, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
     estado_id, _ = _obter_localidade_sessao(request, _publico=_publico)
+    ano_filtrado = datetime.now().year
 
     link_inicio = ""
     acao_filtro = "/calendario"
@@ -4685,6 +4691,9 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     query_eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id)
     if tipo_evento_selecionado != "Todos":
         query_eventos = query_eventos.filter(Evento.tipo_evento == tipo_evento_selecionado)
+    inicio_ano = date(ano_filtrado, 1, 1)
+    fim_ano = date(ano_filtrado, 12, 31)
+    query_eventos = query_eventos.filter(Evento.data_inicio <= fim_ano, Evento.data_fim >= inicio_ano)
     eventos = query_eventos.all()
     regionais = [r.nome for r in db.query(Regional).order_by(Regional.nome).all()]
 
@@ -4772,6 +4781,10 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
             <h1>Calendário de Eventos de {LABEL_LOC}</h1>
         </div>
         <form class="filtro-wrap" method="get" action="{acao_filtro}">
+            <label for="ano">Ano:</label>
+            <select name="ano" id="ano">
+                <option value="{ano_filtrado}" selected>{ano_filtrado}</option>
+            </select>
             <label for="tipo_evento">Tipo de evento:</label>
             <select name="tipo_evento" id="tipo_evento">
                 {opcoes_tipo_evento_html}
@@ -4789,6 +4802,7 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
     html = html.replace("{logo_html}", logo_html)
     html = html.replace("{link_inicio}", link_inicio)
     html = html.replace("{acao_filtro}", acao_filtro)
+    html = html.replace("{ano_filtrado}", str(ano_filtrado))
     html = html.replace("{LABEL_LOC}", label_loc_escaped)
     html = html.replace("{PORTAL_COR_FUNDO}", escape(PORTAL_COR_FUNDO))
 
@@ -4930,8 +4944,8 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
 
 
 @app.get("/public/calendario", response_class=HTMLResponse)
-def calendario_eventos_publico(request: Request, tipo_evento: str = "Todos"):
-    return calendario_eventos(request, tipo_evento=tipo_evento, _publico=True)
+def calendario_eventos_publico(request: Request, tipo_evento: str = "Todos", ano: Optional[int] = None):
+    return calendario_eventos(request, tipo_evento=tipo_evento, ano=ano, _publico=True)
 
 
 @app.get("/public/visualizacao", response_class=HTMLResponse)
