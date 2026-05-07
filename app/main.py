@@ -1109,6 +1109,7 @@ EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_ANUNCIANTES_MAPA = os.getenv("EXIBIR_ANUNCIANTES_MAPA", "true").lower() not in ("false", "0", "no")
+EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO = os.getenv("EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO", "true").lower() not in ("false", "0", "no")
 LOGO_URL = os.getenv(
     "LOGO_URL",
     "https://visitebelohorizonte.com/wp-content/uploads/2025/07/LOGO-1.svg",
@@ -1557,6 +1558,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
     exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
+    exibir_botao_voltar_portal_calendario_checked = "checked" if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO else ""
     usar_contexto_cidade_checked = "checked" if USAR_CONTEXTO_CIDADE else ""
     logo_url_valor = escape(LOGO_URL or "")
     portal_cor_fundo_valor = escape(PORTAL_COR_FUNDO)
@@ -1679,6 +1681,11 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                     Exibir anunciantes nos mapas
                 </label>
 
+                <label class="check">
+                    <input type="checkbox" name="exibir_botao_voltar_portal_calendario" value="1" {exibir_botao_voltar_portal_calendario_checked} />
+                    Exibir botão "Voltar ao portal" no calendário de eventos
+                </label>
+
                 <label for="logo_url">URL do logo</label>
                 <input id="logo_url" type="text" name="logo_url" value="{logo_url_valor}" placeholder="https://..." />
 
@@ -1719,6 +1726,7 @@ def salvar_configuracoes(
     exibir_contagem_locais_mapa: Optional[str] = Form(None),
     exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     exibir_anunciantes_mapa: Optional[str] = Form(None),
+    exibir_botao_voltar_portal_calendario: Optional[str] = Form(None),
     usar_contexto_cidade: Optional[str] = Form(None),
     logo_url: str = Form(""),
     portal_cor_fundo: str = Form("#f8f9fb"),
@@ -1732,6 +1740,7 @@ def salvar_configuracoes(
         return redirect
 
     global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN, USAR_CONTEXTO_CIDADE
+    global EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO
     global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
     global PORTAL_COR_FUNDO, PORTAL_FONTE_TITULO, PORTAL_COR_BOTAO, PORTAL_COR_BOTAO_HOVER, PORTAL_COR_TEXTO_BOTAO
 
@@ -1742,6 +1751,7 @@ def salvar_configuracoes(
         novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
         novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
+        novo_exibir_botao_voltar_portal_calendario = bool(exibir_botao_voltar_portal_calendario)
         novo_usar_contexto_cidade = bool(usar_contexto_cidade)
         nova_logo_url = (logo_url or "").strip()
         nova_portal_cor_fundo = _normalizar_cor_hex(portal_cor_fundo, "#f8f9fb")
@@ -1772,6 +1782,10 @@ def salvar_configuracoes(
             "true" if novo_exibir_anunciantes_mapa else "false",
         )
         _atualizar_variavel_env(
+            "EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO",
+            "true" if novo_exibir_botao_voltar_portal_calendario else "false",
+        )
+        _atualizar_variavel_env(
             "USAR_CONTEXTO_CIDADE",
             "true" if novo_usar_contexto_cidade else "false",
         )
@@ -1788,6 +1802,7 @@ def salvar_configuracoes(
         EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
         EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
+        EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO = novo_exibir_botao_voltar_portal_calendario
         USAR_CONTEXTO_CIDADE = novo_usar_contexto_cidade
         LOGO_URL = nova_logo_url
         PORTAL_COR_FUNDO = nova_portal_cor_fundo
@@ -4652,10 +4667,10 @@ def calendario_eventos(request: Request, tipo_evento: str = "Todos", _publico: b
 
     link_inicio = ""
     acao_filtro = "/calendario"
-    if not _publico:
-        link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;', usar_historico=True)
-    else:
+    if _publico:
         acao_filtro = "/public/calendario"
+
+    if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
         link_inicio = botao_voltar_portal_html(extra_style='margin-right:auto;', usar_historico=True)
 
     db: Session = SessionLocal()
