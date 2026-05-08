@@ -4973,6 +4973,7 @@ def calendario_eventos(
             <h1>Calendário de Eventos de {LABEL_LOC}</h1>
         </div>
         <form class="filtro-wrap" method="get" action="{acao_filtro}">
+            <input type="hidden" name="exibir_filtro_tipo_evento" value="{exibir_filtro_tipo_evento}">
             <label for="ano">Ano:</label>
             <select name="ano" id="ano">
                 <option value="{ano_filtrado}" selected>{ano_filtrado}</option>
@@ -4994,6 +4995,7 @@ def calendario_eventos(
     html = html.replace("{ano_filtrado}", str(ano_filtrado))
     html = html.replace("{LABEL_LOC}", label_loc_escaped)
     html = html.replace("{PORTAL_COR_FUNDO}", escape(PORTAL_COR_FUNDO))
+    html = html.replace("{exibir_filtro_tipo_evento}", "true" if exibir_filtro_tipo_evento else "false")
 
     filtro_tipo_evento_html = ""
     if exibir_filtro_tipo_evento:
