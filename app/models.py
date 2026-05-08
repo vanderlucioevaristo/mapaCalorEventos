@@ -59,6 +59,7 @@ class Evento(Base):
     nome = Column(String)
     descricao = Column(String)
     data_inicio = Column(Date)
+    hora_inicio = Column(String, default="09:00", nullable=False)
     data_fim = Column(Date)
     publico_estimado = Column(Integer)
     porte = Column(String)

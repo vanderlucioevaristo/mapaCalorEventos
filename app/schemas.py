@@ -7,6 +7,7 @@ class EventoResponse(BaseModel):
     nome: str | None = None
     descricao: str | None = None
     data_inicio: date | None = None
+    hora_inicio: str | None = None
     data_fim: date | None = None
     publico_estimado: int | None = None
     porte: str | None = None
@@ -29,6 +30,7 @@ class CalendarioEventoResponse(BaseModel):
     nome: str | None = None
     descricao: str | None = None
     data_inicio: date | None = None
+    hora_inicio: str | None = None
     data_fim: date | None = None
     publico_estimado: int | None = None
     porte: str | None = None
