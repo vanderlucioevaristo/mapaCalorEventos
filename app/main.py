@@ -4841,6 +4841,7 @@ def calendario_eventos(
     request: Request,
     tipo_evento: str = "Todos",
     ano: Optional[int] = None,
+    exibir_filtro_tipo_evento: bool = True,
     _publico: bool = False,
 ):
     if not _publico:
@@ -4970,10 +4971,7 @@ def calendario_eventos(
             <select name="ano" id="ano">
                 <option value="{ano_filtrado}" selected>{ano_filtrado}</option>
             </select>
-            <label for="tipo_evento">Tipo de evento:</label>
-            <select name="tipo_evento" id="tipo_evento">
-                {opcoes_tipo_evento_html}
-            </select>
+            {filtro_tipo_evento_html}
             <button type="submit">Filtrar</button>
         </form>
         <div class="legenda">
@@ -4991,11 +4989,19 @@ def calendario_eventos(
     html = html.replace("{LABEL_LOC}", label_loc_escaped)
     html = html.replace("{PORTAL_COR_FUNDO}", escape(PORTAL_COR_FUNDO))
 
-    opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
-    for tipo in TIPOS_EVENTO:
-        selected = " selected" if tipo == tipo_evento_selecionado else ""
-        opcoes_tipo_evento_html += f'<option value="{tipo}"{selected}>{tipo}</option>'
-    html = html.replace("{opcoes_tipo_evento_html}", opcoes_tipo_evento_html)
+    filtro_tipo_evento_html = ""
+    if exibir_filtro_tipo_evento:
+        opcoes_tipo_evento_html = '<option value="Todos">Todos</option>'
+        for tipo in TIPOS_EVENTO:
+            selected = " selected" if tipo == tipo_evento_selecionado else ""
+            opcoes_tipo_evento_html += f'<option value="{tipo}"{selected}>{tipo}</option>'
+        filtro_tipo_evento_html = (
+            '<label for="tipo_evento">Tipo de evento:</label>'
+            '<select name="tipo_evento" id="tipo_evento">'
+            f'{opcoes_tipo_evento_html}'
+            '</select>'
+        )
+    html = html.replace("{filtro_tipo_evento_html}", filtro_tipo_evento_html)
 
     # Cabeçalhos dos meses
     for ano_mes, mes in meses_ordenados:
@@ -5129,8 +5135,19 @@ def calendario_eventos(
 
 
 @app.get("/public/calendario", response_class=HTMLResponse)
-def calendario_eventos_publico(request: Request, tipo_evento: str = "Todos", ano: Optional[int] = None):
-    return calendario_eventos(request, tipo_evento=tipo_evento, ano=ano, _publico=True)
+def calendario_eventos_publico(
+    request: Request,
+    tipo_evento: str = "Todos",
+    ano: Optional[int] = None,
+    exibir_filtro_tipo_evento: bool = True,
+):
+    return calendario_eventos(
+        request,
+        tipo_evento=tipo_evento,
+        ano=ano,
+        exibir_filtro_tipo_evento=exibir_filtro_tipo_evento,
+        _publico=True,
+    )
 
 
 @app.get("/public/visualizacao", response_class=HTMLResponse)
