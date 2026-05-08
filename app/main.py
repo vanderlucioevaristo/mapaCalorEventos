@@ -74,7 +74,7 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 Base.metadata.create_all(bind=engine)
 
-TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo"]
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso"]
 ESTADO_PADRAO_NOME = "Minas Gerais"
 ESTADO_PADRAO_SIGLA = "MG"
 MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
@@ -83,6 +83,18 @@ MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
 def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
     if tipo_evento in TIPOS_EVENTO:
         return tipo_evento
+
+    tipo_normalizado = (tipo_evento or "").strip().lower()
+    aliases = {
+        "carnaval": "Carnaval",
+        "negocios": "Negócios",
+        "negócios": "Negócios",
+        "turismo": "Turismo",
+        "religioso": "Religioso",
+    }
+    if tipo_normalizado in aliases:
+        return aliases[tipo_normalizado]
+
     return "Negócios"
 
 
@@ -508,6 +520,8 @@ def obter_cor_tipo_evento(tipo_evento: str) -> tuple:
         return ("#3b82f6", "💼", "Negócios")
     elif tipo == "turismo":
         return ("#10b981", "✈️", "Turismo")
+    elif tipo == "religioso":
+        return ("#7c3aed", "⛪", "Religioso")
     else:
         return ("#6b7280", "📍", tipo_evento or "Evento")
 
@@ -683,7 +697,7 @@ def legenda_tipos_evento_html() -> str:
     itens_html = "".join(itens_legenda)
     return f'''
     <div style="position: fixed;
-                top: 50px; right: 50px; width: 180px;
+                bottom: 20px; left: 20px; width: 180px;
                 background-color: white; border:2px solid grey; z-index:9999; font-size:13px;
                 padding: 12px; border-radius: 8px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
