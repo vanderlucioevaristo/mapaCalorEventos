@@ -5140,7 +5140,15 @@ def calendario_eventos(
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
-        tipo_local_html = f'<div class="infra-icons"><span class="infra-tag" title="Tipo principal do local">🏷️ {escape(normalizar_tipo_evento(local.tipo_evento))}</span></div>'
+        cor_tipo_local, emoji_tipo_local, nome_tipo_local = obter_cor_tipo_evento(local.tipo_evento)
+        tipo_local_html = (
+            '<div class="infra-icons">'
+            f'<span class="infra-tag" title="Tipo principal do local: {escape(nome_tipo_local)}">'
+            f'<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:999px; background:{cor_tipo_local}; color:#fff; font-size:11px;">{emoji_tipo_local}</span>'
+            f'{escape(nome_tipo_local)}'
+            '</span>'
+            '</div>'
+        )
         acessibilidade_html = ""
         proximo_metro_html = ""
         restaurantes_html = ""
