@@ -3406,6 +3406,9 @@ def render_tela_cadastro_manutencao(
             local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             local_warning_class = " warning-coords" if local_sem_coordenadas else ""
             local_warning_html = '<small class="coord-warning">Coordenadas pendentes</small>' if local_sem_coordenadas else ""
+            local_latitude_valor = "" if local.latitude is None else str(local.latitude)
+            local_longitude_valor = "" if local.longitude is None else str(local.longitude)
+            local_coords_readonly_attr = "" if local_sem_coordenadas else " readonly"
             locais_existentes_html += f"""
             <div class="item-row{local_warning_class}">
                 <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small> {local_warning_html}</div>
@@ -3447,10 +3450,12 @@ def render_tela_cadastro_manutencao(
                         </select>
 
                         <label>Latitude</label>
-                        <input type="number" step="any" name="latitude" value="{local.latitude}" readonly />
+                        <input type="number" step="any" name="latitude" value="{local_latitude_valor}"{local_coords_readonly_attr} />
 
                         <label>Longitude</label>
-                        <input type="number" step="any" name="longitude" value="{local.longitude}" readonly />
+                        <input type="number" step="any" name="longitude" value="{local_longitude_valor}"{local_coords_readonly_attr} />
+
+                        {'<small class="coord-warning">Você pode informar as coordenadas manualmente quando o endereço não for localizado.</small>' if local_sem_coordenadas else ''}
 
                         <label>Telefone de contato</label>
                         <input name="contato_telefone" value="{local_telefone}" />
@@ -4050,6 +4055,8 @@ def editar_local(
     estado_id: int = Form(...),
     municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None),
     contato_telefone: str = Form(""),
     site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
@@ -4072,13 +4079,20 @@ def editar_local(
         latitude_geo, longitude_geo = geocodificar_endereco(endereco)
         sem_coordenadas = latitude_geo is None or longitude_geo is None
 
+        latitude_final = latitude_geo
+        longitude_final = longitude_geo
+        if sem_coordenadas and coordenadas_validas(latitude, longitude):
+            latitude_final = float(latitude)
+            longitude_final = float(longitude)
+            sem_coordenadas = False
+
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
         local.municipio_id = municipio_id
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
-        local.latitude = None if sem_coordenadas else latitude_geo
-        local.longitude = None if sem_coordenadas else longitude_geo
+        local.latitude = None if sem_coordenadas else latitude_final
+        local.longitude = None if sem_coordenadas else longitude_final
         local.contato_telefone = (contato_telefone or "").strip()
         local.site_url = (site_url or "").strip()
         local.acessibilidade = bool(acessibilidade)
