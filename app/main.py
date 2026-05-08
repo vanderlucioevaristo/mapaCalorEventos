@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from . import schemas
 from .database import SessionLocal, engine, Base
 from .models import (
     Evento,
@@ -1019,7 +1020,20 @@ def legenda_mapa_html_interativa(
 
 seed_regionais()
 
-app = FastAPI()
+app = FastAPI(
+    title="Mapa Calor Eventos API",
+    description="API e interfaces do projeto Mapa Calor Eventos.",
+    version=APP_VERSION,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=[
+        {"name": "Sistema", "description": "Endpoints utilitários da aplicação."},
+        {"name": "Eventos", "description": "Consulta de eventos em formato JSON."},
+        {"name": "Calendário", "description": "Consulta JSON dos eventos usados no calendário."},
+        {"name": "Páginas", "description": "Rotas HTML do portal e calendário."},
+    ],
+)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", "troque-esta-chave-em-producao"),
@@ -1109,6 +1123,7 @@ EXIBIR_LOGO = os.getenv("EXIBIR_LOGO", "true").lower() not in ("false", "0", "no
 EXIBIR_CONTAGEM_LOCAIS_MAPA = os.getenv("EXIBIR_CONTAGEM_LOCAIS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_CONTAGEM_EVENTOS_MAPA = os.getenv("EXIBIR_CONTAGEM_EVENTOS_MAPA", "true").lower() not in ("false", "0", "no")
 EXIBIR_ANUNCIANTES_MAPA = os.getenv("EXIBIR_ANUNCIANTES_MAPA", "true").lower() not in ("false", "0", "no")
+EXIBIR_LEGENDA_MAPAS = os.getenv("EXIBIR_LEGENDA_MAPAS", "true").lower() not in ("false", "0", "no")
 EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO = os.getenv("EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO", "true").lower() not in ("false", "0", "no")
 LOGO_URL = os.getenv(
     "LOGO_URL",
@@ -1558,6 +1573,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
     exibir_contagem_locais_checked = "checked" if EXIBIR_CONTAGEM_LOCAIS_MAPA else ""
     exibir_contagem_eventos_checked = "checked" if EXIBIR_CONTAGEM_EVENTOS_MAPA else ""
     exibir_anunciantes_mapa_checked = "checked" if EXIBIR_ANUNCIANTES_MAPA else ""
+    exibir_legenda_mapas_checked = "checked" if EXIBIR_LEGENDA_MAPAS else ""
     exibir_botao_voltar_portal_calendario_checked = "checked" if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO else ""
     usar_contexto_cidade_checked = "checked" if USAR_CONTEXTO_CIDADE else ""
     logo_url_valor = escape(LOGO_URL or "")
@@ -1682,6 +1698,11 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
                 </label>
 
                 <label class="check">
+                    <input type="checkbox" name="exibir_legenda_mapas" value="1" {exibir_legenda_mapas_checked} />
+                    Exibir legenda nos mapas
+                </label>
+
+                <label class="check">
                     <input type="checkbox" name="exibir_botao_voltar_portal_calendario" value="1" {exibir_botao_voltar_portal_calendario_checked} />
                     Exibir botão "Voltar ao portal" no calendário de eventos
                 </label>
@@ -1726,6 +1747,7 @@ def salvar_configuracoes(
     exibir_contagem_locais_mapa: Optional[str] = Form(None),
     exibir_contagem_eventos_mapa: Optional[str] = Form(None),
     exibir_anunciantes_mapa: Optional[str] = Form(None),
+    exibir_legenda_mapas: Optional[str] = Form(None),
     exibir_botao_voltar_portal_calendario: Optional[str] = Form(None),
     usar_contexto_cidade: Optional[str] = Form(None),
     logo_url: str = Form(""),
@@ -1741,7 +1763,7 @@ def salvar_configuracoes(
 
     global EXIBIR_LOGO, EXIBIR_ESQUECI_SENHA_LOGIN, EXIBIR_BOTAO_CADASTRO_LOGIN, USAR_CONTEXTO_CIDADE
     global EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO
-    global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA
+    global LOGO_URL, EXIBIR_CONTAGEM_LOCAIS_MAPA, EXIBIR_CONTAGEM_EVENTOS_MAPA, EXIBIR_ANUNCIANTES_MAPA, EXIBIR_LEGENDA_MAPAS
     global PORTAL_COR_FUNDO, PORTAL_FONTE_TITULO, PORTAL_COR_BOTAO, PORTAL_COR_BOTAO_HOVER, PORTAL_COR_TEXTO_BOTAO
 
     try:
@@ -1751,6 +1773,7 @@ def salvar_configuracoes(
         novo_exibir_contagem_locais_mapa = bool(exibir_contagem_locais_mapa)
         novo_exibir_contagem_eventos_mapa = bool(exibir_contagem_eventos_mapa)
         novo_exibir_anunciantes_mapa = bool(exibir_anunciantes_mapa)
+        novo_exibir_legenda_mapas = bool(exibir_legenda_mapas)
         novo_exibir_botao_voltar_portal_calendario = bool(exibir_botao_voltar_portal_calendario)
         novo_usar_contexto_cidade = bool(usar_contexto_cidade)
         nova_logo_url = (logo_url or "").strip()
@@ -1782,6 +1805,10 @@ def salvar_configuracoes(
             "true" if novo_exibir_anunciantes_mapa else "false",
         )
         _atualizar_variavel_env(
+            "EXIBIR_LEGENDA_MAPAS",
+            "true" if novo_exibir_legenda_mapas else "false",
+        )
+        _atualizar_variavel_env(
             "EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO",
             "true" if novo_exibir_botao_voltar_portal_calendario else "false",
         )
@@ -1802,6 +1829,7 @@ def salvar_configuracoes(
         EXIBIR_CONTAGEM_LOCAIS_MAPA = novo_exibir_contagem_locais_mapa
         EXIBIR_CONTAGEM_EVENTOS_MAPA = novo_exibir_contagem_eventos_mapa
         EXIBIR_ANUNCIANTES_MAPA = novo_exibir_anunciantes_mapa
+        EXIBIR_LEGENDA_MAPAS = novo_exibir_legenda_mapas
         EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO = novo_exibir_botao_voltar_portal_calendario
         USAR_CONTEXTO_CIDADE = novo_usar_contexto_cidade
         LOGO_URL = nova_logo_url
@@ -2470,7 +2498,7 @@ def home(request: Request):
     """
 
 
-@app.get("/version")
+@app.get("/version", response_model=schemas.VersionResponse, tags=["Sistema"], summary="Versão da aplicação")
 def version():
     return {"app": "mapaCalorEventos", "version": APP_VERSION}
 
@@ -2506,6 +2534,100 @@ def _label_localidade(
     if estado_sigla:
         return estado_sigla
     return "localidade"
+
+
+def _resolver_localidade_api(
+    db: Session,
+    request: Request,
+    estado_id: Optional[int],
+    municipio_id: Optional[int],
+    _publico: bool = False,
+) -> tuple[int, int]:
+    estado_sessao, municipio_sessao = _obter_localidade_sessao(request, _publico=_publico)
+    estado_resolvido = estado_id or estado_sessao
+    municipio_resolvido = municipio_id or municipio_sessao
+
+    if not estado_resolvido or not municipio_resolvido:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe estado_id e municipio_id ou defina a localidade na sessão.",
+        )
+
+    if not _localidade_valida(db, estado_resolvido, municipio_resolvido):
+        raise HTTPException(status_code=400, detail="Localidade inválida.")
+
+    return estado_resolvido, municipio_resolvido
+
+
+def _montar_resposta_calendario(
+    request: Request,
+    tipo_evento: str = "Todos",
+    ano: Optional[int] = None,
+    estado_id: Optional[int] = None,
+    municipio_id: Optional[int] = None,
+    _publico: bool = False,
+) -> schemas.CalendarioResponse:
+    ano_filtrado = ano or datetime.now().year
+    tipo_evento_selecionado = tipo_evento if tipo_evento in TIPOS_EVENTO else "Todos"
+
+    db: Session = SessionLocal()
+    try:
+        estado_resolvido, municipio_resolvido = _resolver_localidade_api(
+            db,
+            request,
+            estado_id=estado_id,
+            municipio_id=municipio_id,
+            _publico=_publico,
+        )
+        estados_db = db.query(Estado).order_by(Estado.nome).all()
+        municipios_db = db.query(Municipio).order_by(Municipio.nome).all()
+        label_loc = _label_localidade(estados_db, municipios_db, estado_resolvido, municipio_resolvido)
+
+        query_eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_resolvido)
+        if tipo_evento_selecionado != "Todos":
+            query_eventos = query_eventos.filter(Evento.tipo_evento == tipo_evento_selecionado)
+
+        inicio_ano = date(ano_filtrado, 1, 1)
+        fim_ano = date(ano_filtrado, 12, 31)
+        eventos = (
+            query_eventos
+            .filter(Evento.data_inicio <= fim_ano, Evento.data_fim >= inicio_ano)
+            .order_by(Evento.data_inicio, Evento.nome)
+            .all()
+        )
+        total_locais = db.query(Local).filter(Local.municipio_id == municipio_resolvido).count()
+
+        eventos_resposta = [
+            schemas.CalendarioEventoResponse(
+                id=evento.id,
+                nome=evento.nome,
+                descricao=evento.descricao,
+                data_inicio=evento.data_inicio,
+                data_fim=evento.data_fim,
+                publico_estimado=evento.publico_estimado,
+                porte=evento.porte,
+                contato_telefone=evento.contato_telefone,
+                site_url=evento.site_url,
+                tipo_evento=evento.tipo_evento,
+                local_id=evento.local_id,
+                local_nome=evento.local.nome if evento.local else None,
+                regiao=evento.local.regiao if evento.local else None,
+            )
+            for evento in eventos
+        ]
+
+        return schemas.CalendarioResponse(
+            estado_id=estado_resolvido,
+            municipio_id=municipio_resolvido,
+            localidade=label_loc,
+            ano=ano_filtrado,
+            tipo_evento=tipo_evento_selecionado,
+            total_eventos=len(eventos_resposta),
+            total_locais=total_locais,
+            eventos=eventos_resposta,
+        )
+    finally:
+        db.close()
 
 
 def _render_pagina_localidade(request: Request, _publico: bool = False, msg: str = "") -> str:
@@ -4377,7 +4499,8 @@ def mapa_locais(request: Request, _publico: bool = False):
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
+            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
         locais_mostrados = 0
         contagem_por_regional = {}
@@ -4440,17 +4563,18 @@ def mapa_locais(request: Request, _publico: bool = False):
             if regional not in regionais_com_locais:
                 regionais_com_locais.append(regional)
 
-        cabecalho_legenda = f"Legenda - Regional ({locais_mostrados} locais)"
-        mapa.get_root().html.add_child(
-            folium.Element(
-                legenda_mapa_html(
-                    regionais_com_locais,
-                    cabecalho_legenda,
-                    contagem_por_regional,
-                    exibir_contagem=EXIBIR_CONTAGEM_LOCAIS_MAPA,
+        if EXIBIR_LEGENDA_MAPAS:
+            cabecalho_legenda = f"Legenda - Regional ({locais_mostrados} locais)"
+            mapa.get_root().html.add_child(
+                folium.Element(
+                    legenda_mapa_html(
+                        regionais_com_locais,
+                        cabecalho_legenda,
+                        contagem_por_regional,
+                        exibir_contagem=EXIBIR_CONTAGEM_LOCAIS_MAPA,
+                    )
                 )
             )
-        )
         return mapa.get_root().render()
     finally:
         db.close()
@@ -4461,7 +4585,12 @@ def mapa_locais_publico(request: Request):
     return mapa_locais(request, _publico=True)
 
 
-@app.get("/eventos")
+@app.get(
+    "/eventos",
+    response_model=list[schemas.EventoResponse],
+    tags=["Eventos"],
+    summary="Lista todos os eventos",
+)
 def listar_eventos(request: Request):
     redirect = _redirect_se_nao_autenticado(request)
     if redirect:
@@ -4472,7 +4601,12 @@ def listar_eventos(request: Request):
     return eventos
 
 
-@app.get("/eventos/porte/{porte}")
+@app.get(
+    "/eventos/porte/{porte}",
+    response_model=list[schemas.EventoResponse],
+    tags=["Eventos"],
+    summary="Lista eventos por porte",
+)
 def eventos_por_porte(request: Request, porte: str):
     redirect = _redirect_se_nao_autenticado(request)
     if redirect:
@@ -4537,7 +4671,8 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
         mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
+        if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
+            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         mapa.get_root().html.add_child(
             folium.Element(
                 painel_filtro_mes_mapa_html(
@@ -4628,19 +4763,20 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
             if regional not in regionais_com_eventos:
                 regionais_com_eventos.append(regional)
 
-        cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
-        mapa.get_root().html.add_child(
-            folium.Element(
-                legenda_mapa_html_interativa(
-                    regionais=regionais_com_eventos,
-                    cabecalho=cabecalho_legenda,
-                    map_name=map_name,
-                    bounds_por_regional=bounds_por_regional,
-                    contagem_por_regional=contagem_por_regional,
-                    exibir_contagem=EXIBIR_CONTAGEM_EVENTOS_MAPA,
+        if EXIBIR_LEGENDA_MAPAS:
+            cabecalho_legenda = f"Legenda - Regional ({eventos_mostrados} eventos)"
+            mapa.get_root().html.add_child(
+                folium.Element(
+                    legenda_mapa_html_interativa(
+                        regionais=regionais_com_eventos,
+                        cabecalho=cabecalho_legenda,
+                        map_name=map_name,
+                        bounds_por_regional=bounds_por_regional,
+                        contagem_por_regional=contagem_por_regional,
+                        exibir_contagem=EXIBIR_CONTAGEM_EVENTOS_MAPA,
+                    )
                 )
             )
-        )
         return mapa.get_root().render()
     finally:
         db.close()
@@ -4649,6 +4785,55 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
 @app.get("/public/mapa", response_class=HTMLResponse)
 def mapa_eventos_publico(request: Request, mes: str = "Todos"):
     return mapa_eventos(request, mes=mes, _publico=True)
+
+
+@app.get(
+    "/api/calendario",
+    response_model=schemas.CalendarioResponse,
+    tags=["Calendário"],
+    summary="Retorna os dados do calendário em JSON",
+)
+def calendario_eventos_api(
+    request: Request,
+    tipo_evento: str = "Todos",
+    ano: Optional[int] = None,
+    estado_id: Optional[int] = None,
+    municipio_id: Optional[int] = None,
+):
+    redirect = _redirect_se_nao_autenticado(request)
+    if redirect:
+        raise HTTPException(status_code=401, detail="Autenticação necessária.")
+
+    return _montar_resposta_calendario(
+        request,
+        tipo_evento=tipo_evento,
+        ano=ano,
+        estado_id=estado_id,
+        municipio_id=municipio_id,
+    )
+
+
+@app.get(
+    "/public/api/calendario",
+    response_model=schemas.CalendarioResponse,
+    tags=["Calendário"],
+    summary="Retorna os dados públicos do calendário em JSON",
+)
+def calendario_eventos_api_publico(
+    request: Request,
+    tipo_evento: str = "Todos",
+    ano: Optional[int] = None,
+    estado_id: Optional[int] = None,
+    municipio_id: Optional[int] = None,
+):
+    return _montar_resposta_calendario(
+        request,
+        tipo_evento=tipo_evento,
+        ano=ano,
+        estado_id=estado_id,
+        municipio_id=municipio_id,
+        _publico=True,
+    )
 
 
 @app.get("/calendario", response_class=HTMLResponse)
