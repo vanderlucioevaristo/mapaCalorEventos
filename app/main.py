@@ -98,6 +98,15 @@ def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
     return "Negócios"
 
 
+def normalizar_hora_inicio(hora_inicio: Optional[str]) -> str:
+    valor = (hora_inicio or "").strip()
+    if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", valor):
+        return valor
+    if re.fullmatch(r"([01]?\d|2[0-3])", valor):
+        return f"{int(valor):02d}:00"
+    return "09:00"
+
+
 def garantir_colunas_locais():
     with engine.begin() as conn:
         colunas = {
@@ -155,9 +164,20 @@ def garantir_colunas_eventos():
             conn.execute(text("ALTER TABLE eventos ADD COLUMN contato_telefone TEXT"))
         if "site_url" not in colunas:
             conn.execute(text("ALTER TABLE eventos ADD COLUMN site_url TEXT"))
+        if "hora_inicio" not in colunas:
+            conn.execute(
+                text(
+                    "ALTER TABLE eventos ADD COLUMN hora_inicio TEXT NOT NULL DEFAULT '09:00'"
+                )
+            )
         conn.execute(
             text(
                 "UPDATE eventos SET tipo_evento = 'Negócios' WHERE tipo_evento IS NULL OR TRIM(tipo_evento) = ''"
+            )
+        )
+        conn.execute(
+            text(
+                "UPDATE eventos SET hora_inicio = '09:00' WHERE hora_inicio IS NULL OR TRIM(hora_inicio) = ''"
             )
         )
 
@@ -571,6 +591,7 @@ def adicionar_marcador_evento(mapa_ou_cluster, evento: Evento, map_name: str) ->
     <b>{evento.nome}</b><br>
     Descrição: {evento.descricao}<br>
     Data: {evento.data_inicio} a {evento.data_fim}<br>
+    Hora de início: {normalizar_hora_inicio(getattr(evento, 'hora_inicio', None))}<br>
     Público: {evento.publico_estimado}<br>
     Porte: {evento.porte}<br>
     Tipo: {evento.tipo_evento}<br>
@@ -743,8 +764,14 @@ def atalho_inicio_mapa_html() -> str:
 def painel_filtro_mes_mapa_html(
     meses_disponiveis: list[tuple[int, int]],
     mes_selecionado: str,
+    tipo_evento_selecionado: str,
     acao_filtro: str,
 ) -> str:
+    opcoes_tipo_evento = ['<option value="Todos">Todos</option>']
+    for tipo in TIPOS_EVENTO:
+        selected = " selected" if tipo == tipo_evento_selecionado else ""
+        opcoes_tipo_evento.append(f'<option value="{escape(tipo)}"{selected}>{escape(tipo)}</option>')
+
     opcoes = ['<option value="Todos">Todos</option>']
     for ano, mes in meses_disponiveis:
         valor = f"{ano:04d}-{mes:02d}"
@@ -752,6 +779,7 @@ def painel_filtro_mes_mapa_html(
         selected = " selected" if valor == mes_selecionado else ""
         opcoes.append(f'<option value="{valor}"{selected}>{escape(label_mes)} {ano}</option>')
 
+    opcoes_tipo_evento_html = "".join(opcoes_tipo_evento)
     opcoes_html = "".join(opcoes)
     return f'''
     <div style="position: fixed;
@@ -761,7 +789,11 @@ def painel_filtro_mes_mapa_html(
                 border-radius: 12px;
                 padding: 10px 12px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.14);">
-        <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0;">
+        <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0; flex-wrap:wrap;">
+            <label for="filtro_tipo_evento" style="font-weight:700; color:#111827;">Tipo:</label>
+            <select id="filtro_tipo_evento" name="tipo_evento" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:150px;">
+                {opcoes_tipo_evento_html}
+            </select>
             <label for="filtro_mes" style="font-weight:700; color:#111827;">Mês:</label>
             <select id="filtro_mes" name="mes" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:160px;">
                 {opcoes_html}
@@ -2597,7 +2629,7 @@ def home(request: Request):
             <p>Bem-vindo ao painel de eventos de {escape(label_loc)}. Use os menus abaixo para visualizar o mapa interativo dos eventos ou o calendário de programação.</p>
             {aviso_acesso_html}
             <div class="menu">
-                <a class="card" href="/mapa">
+                <a class="card" href="/mapa?tipo_evento=Todos">
                     <h2>Mapa de Eventos</h2>
                     <p>Visualize a localização de cada evento no mapa de {escape(label_loc)} com cores por região.</p>
                 </a>
@@ -2768,6 +2800,7 @@ def _montar_resposta_calendario(
                 nome=evento.nome,
                 descricao=evento.descricao,
                 data_inicio=evento.data_inicio,
+                hora_inicio=normalizar_hora_inicio(getattr(evento, "hora_inicio", None)),
                 data_fim=evento.data_fim,
                 publico_estimado=evento.publico_estimado,
                 porte=evento.porte,
@@ -3492,6 +3525,7 @@ def render_tela_cadastro_manutencao(
             evento_nome = escape(evento.nome or "")
             evento_descricao = escape(evento.descricao or "")
             evento_porte = escape(evento.porte or "")
+            evento_hora_inicio = normalizar_hora_inicio(getattr(evento, "hora_inicio", None))
             evento_telefone = escape(evento.contato_telefone or "")
             evento_site = escape(evento.site_url or "")
             evento_tipo_evento = normalizar_tipo_evento(evento.tipo_evento)
@@ -3523,6 +3557,9 @@ def render_tela_cadastro_manutencao(
 
                         <label>Data de início</label>
                         <input type="date" name="data_inicio" value="{evento.data_inicio}" required />
+
+                        <label>Hora de início</label>
+                        <input type="time" name="hora_inicio" value="{evento_hora_inicio}" required />
 
                         <label>Data de fim</label>
                         <input type="date" name="data_fim" value="{evento.data_fim}" required />
@@ -3713,6 +3750,9 @@ def render_tela_cadastro_manutencao(
 
                             <label>Data de início</label>
                             <input type="date" name="data_inicio" required />
+
+                            <label>Hora de início</label>
+                            <input type="time" name="hora_inicio" value="09:00" required />
 
                             <label>Data de fim</label>
                             <input type="date" name="data_fim" required />
@@ -3999,6 +4039,7 @@ def cadastrar_evento(
     nome: str = Form(...),
     descricao: str = Form(...),
     data_inicio: str = Form(...),
+    hora_inicio: str = Form("09:00"),
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
@@ -4026,10 +4067,13 @@ def cadastrar_evento(
         if data_fim_dt < data_inicio_dt:
             return RedirectResponse(url="/cadastro?msg=periodo_invalido", status_code=303)
 
+        hora_inicio_norm = normalizar_hora_inicio(hora_inicio)
+
         evento = Evento(
             nome=nome,
             descricao=descricao,
             data_inicio=data_inicio_dt,
+            hora_inicio=hora_inicio_norm,
             data_fim=data_fim_dt,
             publico_estimado=publico_estimado,
             porte=porte,
@@ -4132,6 +4176,7 @@ def editar_evento(
     nome: str = Form(...),
     descricao: str = Form(...),
     data_inicio: str = Form(...),
+    hora_inicio: str = Form("09:00"),
     data_fim: str = Form(...),
     publico_estimado: int = Form(...),
     porte: str = Form(...),
@@ -4163,9 +4208,12 @@ def editar_evento(
         if data_fim_dt < data_inicio_dt:
             return RedirectResponse(url="/manutencao?msg=periodo_invalido", status_code=303)
 
+        hora_inicio_norm = normalizar_hora_inicio(hora_inicio)
+
         evento.nome = nome
         evento.descricao = descricao
         evento.data_inicio = data_inicio_dt
+        evento.hora_inicio = hora_inicio_norm
         evento.data_fim = data_fim_dt
         evento.publico_estimado = publico_estimado
         evento.porte = porte
@@ -4797,7 +4845,12 @@ def eventos_por_porte(request: Request, porte: str):
 
 
 @app.get("/mapa", response_class=HTMLResponse)
-def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
+def mapa_eventos(
+    request: Request,
+    mes: str = "Todos",
+    tipo_evento: str = "Todos",
+    _publico: bool = False,
+):
     if not _publico:
         redirect = _redirect_se_nao_autenticado(request)
         if redirect:
@@ -4812,6 +4865,14 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id).all()
+        tipo_evento_selecionado = tipo_evento if tipo_evento in TIPOS_EVENTO else "Todos"
+        if tipo_evento_selecionado != "Todos":
+            eventos = [
+                evento
+                for evento in eventos
+                if normalizar_tipo_evento(evento.tipo_evento) == tipo_evento_selecionado
+            ]
+
         meses_disponiveis_set = {
             (evento.data_inicio.year, evento.data_inicio.month)
             for evento in eventos
@@ -4857,6 +4918,7 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
                 painel_filtro_mes_mapa_html(
                     meses_disponiveis=meses_disponiveis,
                     mes_selecionado=mes_selecionado,
+                    tipo_evento_selecionado=tipo_evento_selecionado,
                     acao_filtro=acao_filtro_mapa,
                 )
             )
@@ -4941,8 +5003,12 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
         db.close()
 
 @app.get("/public/mapa", response_class=HTMLResponse)
-def mapa_eventos_publico(request: Request, mes: str = "Todos"):
-    return mapa_eventos(request, mes=mes, _publico=True)
+def mapa_eventos_publico(
+    request: Request,
+    mes: str = "Todos",
+    tipo_evento: str = "Todos",
+):
+    return mapa_eventos(request, mes=mes, tipo_evento=tipo_evento, _publico=True)
 
 
 @app.get(
@@ -5219,12 +5285,14 @@ def calendario_eventos(
                     
                     for evento in eventos_periodo:
                         cor_tipo_evento, emoji_tipo_evento, nome_tipo_evento = obter_cor_tipo_evento(evento.tipo_evento)
+                        hora_inicio_evento = normalizar_hora_inicio(getattr(evento, "hora_inicio", None))
                         cell_content += (
                             f'<div style="display:flex; align-items:center; gap:6px; margin: 2px 0;">'
                             f'<span title="{escape(nome_tipo_evento)}" style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:{cor_tipo_evento}; color:#fff; font-size:11px; flex:0 0 auto;">{emoji_tipo_evento}</span>'
                             f'<span>{escape(evento.nome)}</span>'
                             '</div>'
                         )
+                        cell_content += f'<small>🕘 Início: {hora_inicio_evento}</small><br>'
                         cell_content += f'<small>👥 {evento.publico_estimado} pessoas</small><br>'
                     cell_content += '</div>'
                 
@@ -5607,7 +5675,7 @@ def visualizacao_publica(request: Request):
         <div id="layout" class="layout">
             <aside id="sidebar" class="sidebar">
                 <div class="brand">Visualização Eventos - __LABEL_LOC__</div>
-                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa', 'Mapa de eventos', this)">Mapa de Eventos</button>
+                <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa?tipo_evento=Todos', 'Mapa de eventos', this)">Mapa de Eventos</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/mapa-locais', 'Mapa de locais', this)">Mapa de locais</button>
                 <button class="menu-btn" data-menu-item onclick="abrirConteudo('/public/calendario', 'Calendário de eventos', this)">Calendário de Eventos</button>
             </aside>
@@ -5760,6 +5828,7 @@ def portal_publico(request: Request):
                     Evento.nome,
                     Evento.descricao,
                     Evento.data_inicio,
+                    Evento.hora_inicio,
                     Evento.data_fim,
                     Evento.tipo_evento,
                     Evento.publico_estimado,
@@ -5783,7 +5852,8 @@ def portal_publico(request: Request):
             nome = escape(evento.nome or "Sem nome")
             descricao = escape((evento.descricao or "").strip())
             descricao_curta = (descricao[:140] + "...") if len(descricao) > 140 else descricao
-            periodo = f"{evento.data_inicio.strftime('%d/%m')} a {evento.data_fim.strftime('%d/%m')}"
+            hora_inicio = normalizar_hora_inicio(getattr(evento, "hora_inicio", None))
+            periodo = f"{evento.data_inicio.strftime('%d/%m')} a {evento.data_fim.strftime('%d/%m')} · {hora_inicio}"
             local_nome = escape(evento.local_nome or "Local não informado")
             tipo = escape(normalizar_tipo_evento(evento.tipo_evento))
             publico = evento.publico_estimado or 0
@@ -5819,7 +5889,7 @@ def portal_publico(request: Request):
     user_name = escape(user.get("name") or "") if is_logado else ""
 
     itens_menu = [
-        '<a class="menu-link" href="/public/mapa">Mapa de Eventos</a>',
+        '<a class="menu-link" href="/public/mapa?tipo_evento=Todos">Mapa de Eventos</a>',
         '<a class="menu-link" href="/public/mapa-locais">Mapa de Locais</a>',
         '<a class="menu-link" href="/public/calendario">Calendário</a>',
     ]
