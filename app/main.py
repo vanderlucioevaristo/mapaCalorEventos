@@ -74,7 +74,7 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 Base.metadata.create_all(bind=engine)
 
-TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo"]
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso"]
 ESTADO_PADRAO_NOME = "Minas Gerais"
 ESTADO_PADRAO_SIGLA = "MG"
 MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
@@ -83,6 +83,18 @@ MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
 def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
     if tipo_evento in TIPOS_EVENTO:
         return tipo_evento
+
+    tipo_normalizado = (tipo_evento or "").strip().lower()
+    aliases = {
+        "carnaval": "Carnaval",
+        "negocios": "Negócios",
+        "negócios": "Negócios",
+        "turismo": "Turismo",
+        "religioso": "Religioso",
+    }
+    if tipo_normalizado in aliases:
+        return aliases[tipo_normalizado]
+
     return "Negócios"
 
 
@@ -499,6 +511,85 @@ def icone_anunciante(anunciante: Anunciante):
             pass
     return folium.Icon(color="lightgray", icon="bullhorn", prefix="fa")
 
+def obter_cor_tipo_evento(tipo_evento: str) -> tuple:
+    """Retorna (cor, emoji, nome_tipo) baseado no tipo de evento."""
+    tipo = (tipo_evento or "").strip().lower()
+    if tipo == "carnaval":
+        return ("#ec4899", "🎉", "Carnaval")
+    elif tipo == "negócios":
+        return ("#3b82f6", "💼", "Negócios")
+    elif tipo == "turismo":
+        return ("#10b981", "✈️", "Turismo")
+    elif tipo == "religioso":
+        return ("#7c3aed", "⛪", "Religioso")
+    else:
+        return ("#6b7280", "📍", tipo_evento or "Evento")
+
+
+def adicionar_marcador_evento(mapa_ou_cluster, evento: Evento, map_name: str) -> None:
+    """Adiciona marcador de evento no mapa com ícone diferenciado por tipo."""
+    lat = float(evento.local.latitude)
+    lon = float(evento.local.longitude)
+    cor, emoji, _ = obter_cor_tipo_evento(evento.tipo_evento)
+
+    marcador_html = (
+        '<div style="position:relative;width:40px;height:40px;">'
+        '<style>'
+        '@keyframes pulseEventoHalo {'
+        '0% { transform: translate(-50%,-50%) scale(0.9); opacity: 0.45; }'
+        '70% { transform: translate(-50%,-50%) scale(1.45); opacity: 0.08; }'
+        '100% { transform: translate(-50%,-50%) scale(1.6); opacity: 0; }'
+        '}'
+        '@keyframes pulseEventoNucleo {'
+        '0% { transform: translate(-50%,-50%) scale(0.94); box-shadow:0 4px 12px rgba(0,0,0,0.30); }'
+        '50% { transform: translate(-50%,-50%) scale(1.08); box-shadow:0 7px 20px rgba(0,0,0,0.36); }'
+        '100% { transform: translate(-50%,-50%) scale(0.94); box-shadow:0 4px 12px rgba(0,0,0,0.30); }'
+        '}'
+        '.evento-halo {'
+        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+        'width:24px;height:24px;border-radius:50%;'
+        f'background:{cor};'
+        'animation:pulseEventoHalo 1.2s ease-out infinite;'
+        '}'
+        '.evento-marker {'
+        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+        'width:24px;height:24px;border-radius:50%;'
+        f'background:{cor};border:2px solid white;'
+        'display:flex;align-items:center;justify-content:center;'
+        f'box-shadow:0 4px 12px rgba(0,0,0,0.30);'
+        'animation:pulseEventoNucleo 1.2s ease-in-out infinite;'
+        'font-size:15px;'
+        '}'
+        '</style>'
+        '<div class="evento-halo"></div>'
+        f'<div class="evento-marker">{emoji}</div>'
+        '</div>'
+    )
+
+    popup_text = f"""
+    <div data-track-entidade="evento" data-track-id="{evento.id}">
+    <b>{evento.nome}</b><br>
+    Descrição: {evento.descricao}<br>
+    Data: {evento.data_inicio} a {evento.data_fim}<br>
+    Público: {evento.publico_estimado}<br>
+    Porte: {evento.porte}<br>
+    Tipo: {evento.tipo_evento}<br>
+    Local: {evento.local.nome}<br>
+    {_telefone_html(evento.contato_telefone)}
+    {_site_html_rastreado(evento.site_url, 'evento', evento.id)}
+    {link_rota_html(lat, lon, map_name, evento.local.nome)}
+    </div>
+    """
+
+    folium.Marker(
+        location=[lat, lon],
+        popup=popup_text,
+        tooltip=f"{evento.nome} - {evento.local.nome}",
+        icon=folium.DivIcon(html=marcador_html, icon_size=(40, 40), icon_anchor=(20, 20)),
+        z_index_offset=1500,
+    ).add_to(mapa_ou_cluster)
+
+
 
 def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -> None:
     lat = float(anunciante.latitude)
@@ -506,25 +597,13 @@ def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -
     tipo_anunciante = (anunciante.tipo or "").strip()
     tooltip_tipo = f" ({tipo_anunciante})" if tipo_anunciante else ""
 
-    # Halo azul para destacar o anunciante no mapa.
-    folium.CircleMarker(
-        location=[lat, lon],
-        radius=20,
-        color="#1d4ed8",
-        weight=3,
-        fill=True,
-        fill_color="#60a5fa",
-        fill_opacity=0.45,
-        opacity=1,
-    ).add_to(mapa)
-
     marcador_html = (
         '<div style="position:relative;width:40px;height:40px;">'
         '<style>'
         '@keyframes pulseAnuncianteAzul {'
-        '0% { transform: scale(0.82); opacity: 0.85; }'
-        '70% { transform: scale(1.35); opacity: 0.08; }'
-        '100% { transform: scale(1.45); opacity: 0; }'
+        '0% { transform: translate(-50%,-50%) scale(0.9); opacity: 0.45; }'
+        '70% { transform: translate(-50%,-50%) scale(1.45); opacity: 0.08; }'
+        '100% { transform: translate(-50%,-50%) scale(1.6); opacity: 0; }'
         '}'
         '@keyframes pulseAnuncianteEstrela {'
         '0% { transform: translate(-50%,-50%) scale(0.9); box-shadow:0 4px 12px rgba(30,58,138,.55); }'
@@ -533,17 +612,17 @@ def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -
         '}'
         '.anunciante-pulse-blue {'
         'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
-        'width:22px;height:22px;border-radius:50%;'
+        'width:24px;height:24px;border-radius:50%;'
         'background:rgba(59,130,246,0.55);'
-        'animation:pulseAnuncianteAzul 1.1s infinite ease-out;'
+        'animation:pulseAnuncianteAzul 1.2s infinite ease-out;'
         '}'
         '.anunciante-star-blue {'
         'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
-        'width:22px;height:22px;border-radius:50%;'
+        'width:24px;height:24px;border-radius:50%;'
         'background:#2563eb;border:2px solid #1e3a8a;'
         'display:flex;align-items:center;justify-content:center;'
-        'box-shadow:0 4px 14px rgba(30,58,138,.7);'
-        'animation:pulseAnuncianteEstrela 1.1s ease-in-out infinite;'
+        'box-shadow:0 4px 12px rgba(30,58,138,.7);'
+        'animation:pulseAnuncianteEstrela 1.2s ease-in-out infinite;'
         '}'
         '</style>'
         '<div class="anunciante-pulse-blue"></div>'
@@ -603,6 +682,50 @@ def legenda_mapa_html(
                 padding: 10px">
     <b>{escape(cabecalho)}</b><br>
     {itens}
+    </div>
+    '''
+
+def legenda_tipos_evento_html() -> str:
+    """Retorna HTML com legenda dos tipos de eventos."""
+    itens_legenda = []
+    for tipo_evento in TIPOS_EVENTO:
+        cor, emoji, nome = obter_cor_tipo_evento(tipo_evento)
+        itens_legenda.append(
+            f'<div style="margin-bottom: 8px;"><span style="font-size:20px;">{emoji}</span> {escape(nome)}</div>'
+        )
+    
+    itens_html = "".join(itens_legenda)
+    return f'''
+    <div style="position: fixed;
+                bottom: 20px; left: 20px; width: 180px;
+                background-color: white; border:2px solid grey; z-index:9999; font-size:13px;
+                padding: 12px; border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <b>Tipos de Evento</b><br><br>
+    {itens_html}
+    </div>
+    '''
+
+
+def legenda_tipos_evento_rodape_html() -> str:
+    """Retorna HTML com legenda dos tipos de eventos para o rodapé da página."""
+    itens_legenda = []
+    for tipo_evento in TIPOS_EVENTO:
+        cor, emoji, nome = obter_cor_tipo_evento(tipo_evento)
+        itens_legenda.append(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;">'
+            f'<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:{cor};color:#fff;font-size:16px;">{emoji}</span>'
+            f'<span style="font-weight:600;color:#111827;">{escape(nome)}</span>'
+            '</div>'
+        )
+
+    itens_html = "".join(itens_legenda)
+    return f'''
+    <div style="margin: 20px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px;">
+        <div style="font-weight: 700; color: #111827; margin-bottom: 12px;">Legenda dos ícones por tipo de evento</div>
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+            {itens_html}
+        </div>
     </div>
     '''
 
@@ -3283,6 +3406,9 @@ def render_tela_cadastro_manutencao(
             local_restaurantes_checked = "checked" if bool(local.restaurantes) else ""
             local_warning_class = " warning-coords" if local_sem_coordenadas else ""
             local_warning_html = '<small class="coord-warning">Coordenadas pendentes</small>' if local_sem_coordenadas else ""
+            local_latitude_valor = "" if local.latitude is None else str(local.latitude)
+            local_longitude_valor = "" if local.longitude is None else str(local.longitude)
+            local_coords_readonly_attr = "" if local_sem_coordenadas else " readonly"
             locais_existentes_html += f"""
             <div class="item-row{local_warning_class}">
                 <div class="item-name">{local_nome} <small>({escape(local_tipo_evento)})</small> {local_warning_html}</div>
@@ -3324,10 +3450,12 @@ def render_tela_cadastro_manutencao(
                         </select>
 
                         <label>Latitude</label>
-                        <input type="number" step="any" name="latitude" value="{local.latitude}" readonly />
+                        <input type="number" step="any" name="latitude" value="{local_latitude_valor}"{local_coords_readonly_attr} />
 
                         <label>Longitude</label>
-                        <input type="number" step="any" name="longitude" value="{local.longitude}" readonly />
+                        <input type="number" step="any" name="longitude" value="{local_longitude_valor}"{local_coords_readonly_attr} />
+
+                        {'<small class="coord-warning">Você pode informar as coordenadas manualmente quando o endereço não for localizado.</small>' if local_sem_coordenadas else ''}
 
                         <label>Telefone de contato</label>
                         <input name="contato_telefone" value="{local_telefone}" />
@@ -3927,6 +4055,8 @@ def editar_local(
     estado_id: int = Form(...),
     municipio_id: int = Form(...),
     tipo_evento: str = Form(...),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None),
     contato_telefone: str = Form(""),
     site_url: str = Form(""),
     acessibilidade: Optional[str] = Form(None),
@@ -3949,13 +4079,20 @@ def editar_local(
         latitude_geo, longitude_geo = geocodificar_endereco(endereco)
         sem_coordenadas = latitude_geo is None or longitude_geo is None
 
+        latitude_final = latitude_geo
+        longitude_final = longitude_geo
+        if sem_coordenadas and coordenadas_validas(latitude, longitude):
+            latitude_final = float(latitude)
+            longitude_final = float(longitude)
+            sem_coordenadas = False
+
         local.nome = nome
         local.endereco = endereco
         local.regiao = regiao
         local.municipio_id = municipio_id
         local.tipo_evento = normalizar_tipo_evento(tipo_evento)
-        local.latitude = None if sem_coordenadas else latitude_geo
-        local.longitude = None if sem_coordenadas else longitude_geo
+        local.latitude = None if sem_coordenadas else latitude_final
+        local.longitude = None if sem_coordenadas else longitude_final
         local.contato_telefone = (contato_telefone or "").strip()
         local.site_url = (site_url or "").strip()
         local.acessibilidade = bool(acessibilidade)
@@ -4755,28 +4892,7 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
                 limites["min_lon"] = min(limites["min_lon"], lon)
                 limites["max_lon"] = max(limites["max_lon"], lon)
 
-            cor = cor_regional(evento.local.regiao)
-            tooltip_text = f"{evento.nome} - {evento.local.nome} - Público estimado: {evento.publico_estimado}"
-            popup_text = f"""
-            <div data-track-entidade="evento" data-track-id="{evento.id}">
-            <b>{evento.nome}</b><br>
-            Descrição: {evento.descricao}<br>
-            Data: {evento.data_inicio} a {evento.data_fim}<br>
-            Público: {evento.publico_estimado}<br>
-            Porte: {evento.porte}<br>
-            Tipo: {evento.tipo_evento}<br>
-            Local: {evento.local.nome}<br>
-            {_telefone_html(evento.contato_telefone)}
-            {_site_html_rastreado(evento.site_url, 'evento', evento.id)}
-            {link_rota_html(lat, lon, map_name, evento.local.nome)}
-            </div>
-            """
-            folium.Marker(
-                location=[lat, lon],
-                popup=popup_text,
-                tooltip=tooltip_text,
-                icon=folium.Icon(color=cor)
-            ).add_to(cluster_eventos)
+            adicionar_marcador_evento(cluster_eventos, evento, map_name)
             eventos_mostrados += 1
 
         if EXIBIR_ANUNCIANTES_MAPA:
@@ -4819,10 +4935,10 @@ def mapa_eventos(request: Request, mes: str = "Todos", _publico: bool = False):
                     )
                 )
             )
+            mapa.get_root().html.add_child(folium.Element(legenda_tipos_evento_html()))
         return mapa.get_root().render()
     finally:
         db.close()
-
 
 @app.get("/public/mapa", response_class=HTMLResponse)
 def mapa_eventos_publico(request: Request, mes: str = "Todos"):
@@ -4842,10 +4958,6 @@ def calendario_eventos_api(
     estado_id: Optional[int] = None,
     municipio_id: Optional[int] = None,
 ):
-    redirect = _redirect_se_nao_autenticado(request)
-    if redirect:
-        raise HTTPException(status_code=401, detail="Autenticação necessária.")
-
     return _montar_resposta_calendario(
         request,
         tipo_evento=tipo_evento,
@@ -5056,7 +5168,15 @@ def calendario_eventos(
     # Linhas dos locais
     for local in locais:
         cor_regiao = cores.get(local.regiao, "gray")
-        tipo_local_html = f'<div class="infra-icons"><span class="infra-tag" title="Tipo principal do local">🏷️ {escape(normalizar_tipo_evento(local.tipo_evento))}</span></div>'
+        cor_tipo_local, emoji_tipo_local, nome_tipo_local = obter_cor_tipo_evento(local.tipo_evento)
+        tipo_local_html = (
+            '<div class="infra-icons">'
+            f'<span class="infra-tag" title="Tipo principal do local: {escape(nome_tipo_local)}">'
+            f'<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:999px; background:{cor_tipo_local}; color:#fff; font-size:11px;">{emoji_tipo_local}</span>'
+            f'{escape(nome_tipo_local)}'
+            '</span>'
+            '</div>'
+        )
         acessibilidade_html = ""
         proximo_metro_html = ""
         restaurantes_html = ""
@@ -5098,7 +5218,13 @@ def calendario_eventos(
                         cell_content += f'<b>Dias {dia_inicio}-{dia_fim}:</b><br>'
                     
                     for evento in eventos_periodo:
-                        cell_content += f'• {evento.nome}<br>'
+                        cor_tipo_evento, emoji_tipo_evento, nome_tipo_evento = obter_cor_tipo_evento(evento.tipo_evento)
+                        cell_content += (
+                            f'<div style="display:flex; align-items:center; gap:6px; margin: 2px 0;">'
+                            f'<span title="{escape(nome_tipo_evento)}" style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:{cor_tipo_evento}; color:#fff; font-size:11px; flex:0 0 auto;">{emoji_tipo_evento}</span>'
+                            f'<span>{escape(evento.nome)}</span>'
+                            '</div>'
+                        )
                         cell_content += f'<small>👥 {evento.publico_estimado} pessoas</small><br>'
                     cell_content += '</div>'
                 
@@ -5122,6 +5248,7 @@ def calendario_eventos(
     """
 
     html += "</table></div>"
+    html += legenda_tipos_evento_rodape_html()
     html += """
     <script>
         async function exportarCalendarioJPG() {
