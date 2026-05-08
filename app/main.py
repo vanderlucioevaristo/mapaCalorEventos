@@ -1699,7 +1699,7 @@ def pagina_configuracoes(request: Request, msg: Optional[str] = None):
 
                 <label class="check">
                     <input type="checkbox" name="exibir_legenda_mapas" value="1" {exibir_legenda_mapas_checked} />
-                    Exibir legenda nos mapas
+                    Exibir legenda nos mapas de locais e de eventos
                 </label>
 
                 <label class="check">
