@@ -1469,6 +1469,33 @@ def board_interacoes(request: Request):
             ]
         ) or '<tr><td colspan="6">Sem dados</td></tr>'
 
+        # Totalização por mês, evento e anunciante
+        por_mes_evento_anunciante = {}
+        for item in interacoes:
+            mes = item.data_referencia.strftime("%Y-%m")
+            tipo = (item.entidade_tipo or "").strip().lower()
+            # Filtramos apenas evento e anunciante
+            if tipo not in {"evento", "anunciante"}:
+                continue
+            nome = nome_entidade(item)
+            chave = (mes, tipo, nome)
+            if chave not in por_mes_evento_anunciante:
+                por_mes_evento_anunciante[chave] = {"visualizado": 0, "acessado": 0}
+            acao = (item.acao or "").strip().lower()
+            if acao in {"visualizado", "acessado"}:
+                por_mes_evento_anunciante[chave][acao] += 1
+
+        linhas_mes_evento_anunciante = "".join(
+            [
+                f"<tr><td>{mes}</td><td>{escape(tipo.capitalize())}</td><td>{escape(nome)}</td><td>{dados['visualizado']}</td><td>{dados['acessado']}</td><td>{dados['visualizado'] + dados['acessado']}</td></tr>"
+                for (mes, tipo, nome), dados in sorted(
+                    por_mes_evento_anunciante.items(),
+                    key=lambda item: (item[0][0], item[0][1], item[0][2]),
+                    reverse=True,
+                )
+            ]
+        ) or '<tr><td colspan="6">Sem dados</td></tr>'
+
         return f"""
         <html>
         <head>
@@ -1556,6 +1583,15 @@ def board_interacoes(request: Request):
                         <table>
                             <tr><th>Data</th><th>Tipo</th><th>Nome</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
                             {linhas_interacoes}
+                        </table>
+                    </div>
+                </div>
+                <div class="details-card">
+                    <h3>Total mensal por evento e anunciante</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <tr><th>Mês</th><th>Tipo</th><th>Nome</th><th>Visualizado</th><th>Acessado</th><th>Total</th></tr>
+                            {linhas_mes_evento_anunciante}
                         </table>
                     </div>
                 </div>
