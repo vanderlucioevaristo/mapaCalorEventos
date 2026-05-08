@@ -506,14 +506,14 @@ def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -
     tipo_anunciante = (anunciante.tipo or "").strip()
     tooltip_tipo = f" ({tipo_anunciante})" if tipo_anunciante else ""
 
-    # Halo para destacar o anunciante no mapa.
+    # Halo azul para destacar o anunciante no mapa.
     folium.CircleMarker(
         location=[lat, lon],
         radius=20,
-        color="#166534",
+        color="#1d4ed8",
         weight=3,
         fill=True,
-        fill_color="#22c55e",
+        fill_color="#60a5fa",
         fill_opacity=0.45,
         opacity=1,
     ).add_to(mapa)
@@ -521,28 +521,34 @@ def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -
     marcador_html = (
         '<div style="position:relative;width:40px;height:40px;">'
         '<style>'
-        '@keyframes pulseAnuncianteVerde {'
+        '@keyframes pulseAnuncianteAzul {'
         '0% { transform: scale(0.82); opacity: 0.85; }'
         '70% { transform: scale(1.35); opacity: 0.08; }'
         '100% { transform: scale(1.45); opacity: 0; }'
         '}'
-        '.anunciante-pulse-green {'
-        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
-        'width:22px;height:22px;border-radius:50%;'
-        'background:rgba(22,163,74,0.55);'
-        'animation:pulseAnuncianteVerde 1.1s infinite ease-out;'
+        '@keyframes pulseAnuncianteEstrela {'
+        '0% { transform: translate(-50%,-50%) scale(0.9); box-shadow:0 4px 12px rgba(30,58,138,.55); }'
+        '50% { transform: translate(-50%,-50%) scale(1.22); box-shadow:0 8px 22px rgba(30,58,138,.9); }'
+        '100% { transform: translate(-50%,-50%) scale(0.9); box-shadow:0 4px 12px rgba(30,58,138,.55); }'
         '}'
-        '.anunciante-arrow-green {'
+        '.anunciante-pulse-blue {'
         'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
         'width:22px;height:22px;border-radius:50%;'
-        'background:#22c55e;border:2px solid #14532d;'
+        'background:rgba(59,130,246,0.55);'
+        'animation:pulseAnuncianteAzul 1.1s infinite ease-out;'
+        '}'
+        '.anunciante-star-blue {'
+        'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+        'width:22px;height:22px;border-radius:50%;'
+        'background:#2563eb;border:2px solid #1e3a8a;'
         'display:flex;align-items:center;justify-content:center;'
-        'box-shadow:0 4px 14px rgba(20,83,45,.7);'
+        'box-shadow:0 4px 14px rgba(30,58,138,.7);'
+        'animation:pulseAnuncianteEstrela 1.1s ease-in-out infinite;'
         '}'
         '</style>'
-        '<div class="anunciante-pulse-green"></div>'
-        '<div class="anunciante-arrow-green">'
-        '<span style="color:#fff;font-size:16px;font-weight:900;line-height:1;">↓</span>'
+        '<div class="anunciante-pulse-blue"></div>'
+        '<div class="anunciante-star-blue">'
+        '<span style="color:#fff;font-size:16px;font-weight:900;line-height:1;">★</span>'
         '</div>'
         '</div>'
     )
@@ -550,7 +556,7 @@ def adicionar_marcador_anunciante(mapa, anunciante: Anunciante, map_name: str) -
     folium.Marker(
         location=[lat, lon],
         popup=popup_anunciante_html(anunciante, map_name),
-        tooltip=f"Anunciante ativo: {anunciante.nome}{tooltip_tipo}",
+        tooltip=f"Facilidade: {anunciante.nome}{tooltip_tipo}",
         icon=folium.DivIcon(html=marcador_html, icon_size=(40, 40), icon_anchor=(20, 20)),
         z_index_offset=2000,
     ).add_to(mapa)
@@ -564,7 +570,7 @@ def painel_anunciantes_ativos_html(total: int) -> str:
                 border-radius: 10px; padding: 8px 10px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.15);
                 font-size: 13px; color: #111827;">
-        <b>📢 Anunciantes ativos:</b> {total}
+        <b>📢 Facilidades próximas a eventos:</b> {total}
     </div>
     '''
 
