@@ -5007,7 +5007,6 @@ def mapa_locais(request: Request, _publico: bool = False):
             locais_mostrados += 1
 
         if EXIBIR_ANUNCIANTES_MAPA:
-            total_anunciantes_ativos = 0
             for anunciante in anunciantes:
                 if not anunciante_ativo_em_data(anunciante, data_referencia):
                     continue
@@ -5015,11 +5014,6 @@ def mapa_locais(request: Request, _publico: bool = False):
                     continue
 
                 adicionar_marcador_anunciante(mapa, anunciante, map_name)
-                total_anunciantes_ativos += 1
-
-            mapa.get_root().html.add_child(
-                folium.Element(painel_anunciantes_ativos_html(total_anunciantes_ativos))
-            )
 
         # Adicionar "Sem regional" à lista se houver locais sem regional
         if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
@@ -5178,7 +5172,6 @@ def mapa_eventos(
             eventos_mostrados += 1
 
         if EXIBIR_ANUNCIANTES_MAPA:
-            total_anunciantes_ativos = 0
             for anunciante in anunciantes:
                 if not anunciante_ativo_em_data(anunciante, data_referencia):
                     continue
@@ -5186,11 +5179,6 @@ def mapa_eventos(
                     continue
 
                 adicionar_marcador_anunciante(mapa, anunciante, map_name)
-                total_anunciantes_ativos += 1
-
-            mapa.get_root().html.add_child(
-                folium.Element(painel_anunciantes_ativos_html(total_anunciantes_ativos))
-            )
 
         # Adicionar "Sem regional" à lista se houver eventos sem regional
         if "Sem regional" in contagem_por_regional and "Sem regional" not in regionais:
