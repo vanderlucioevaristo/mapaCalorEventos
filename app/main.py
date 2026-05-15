@@ -761,38 +761,37 @@ def atalho_inicio_mapa_html() -> str:
     '''
 
 
-def painel_filtro_hoje_mapa_html(acao_filtro: str, filtrar_hoje: bool) -> str:
+def painel_filtro_hoje_mapa_html(map_name: str, acao_filtro: str, filtrar_hoje: bool) -> str:
     if filtrar_hoje:
-        botao_texto = "Mostrar todos"
+        botao_texto = "All"
         botao_value = "false"
     else:
-        botao_texto = "Eventos de hoje"
+        botao_texto = "Today"
         botao_value = "true"
+
+    map_name_json = json.dumps(map_name)
+    acao_filtro_json = json.dumps(acao_filtro)
+    botao_texto_json = json.dumps(botao_texto)
+    botao_value_json = json.dumps(botao_value)
 
     return f'''
     <style>
-        .painel-filtro-hoje-mapa {{
-            position: fixed;
-            bottom: max(12px, env(safe-area-inset-bottom));
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 9999;
+        .leaflet-control-filtro-hoje {{
             background: rgba(255,255,255,0.96);
             border: 1px solid #d1d5db;
             border-radius: 12px;
-            padding: 10px 12px;
+            padding: 8px 10px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.14);
             width: max-content;
             max-width: calc(100vw - 20px);
         }}
-        .painel-filtro-hoje-mapa form {{
+        .leaflet-control-filtro-hoje form {{
             display: flex;
             align-items: center;
             gap: 8px;
             margin: 0;
-            flex-wrap: wrap;
         }}
-        .painel-filtro-hoje-mapa button {{
+        .leaflet-control-filtro-hoje button {{
             padding: 7px 10px;
             border: none;
             border-radius: 8px;
@@ -800,30 +799,45 @@ def painel_filtro_hoje_mapa_html(acao_filtro: str, filtrar_hoje: bool) -> str:
             color: #fff;
             font-weight: 700;
             cursor: pointer;
+            white-space: nowrap;
         }}
         @media (max-width: 640px) {{
-            .painel-filtro-hoje-mapa {{
-                left: 10px;
-                right: 10px;
-                transform: none;
+            .leaflet-control-filtro-hoje {{
                 width: auto;
             }}
-            .painel-filtro-hoje-mapa form {{
-                justify-content: center;
-            }}
-            .painel-filtro-hoje-mapa button {{
+            .leaflet-control-filtro-hoje button {{
                 width: 100%;
             }}
         }}
     </style>
-    <div class="painel-filtro-hoje-mapa">
-        <form method="get" action="{escape(acao_filtro)}">
-            <input type="hidden" name="filtrar_hoje" value="{botao_value}">
-            <button type="submit">
-                {escape(botao_texto)}
-            </button>
-        </form>
-    </div>
+    <script>
+        function adicionarControleFiltroHoje_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.todayFilterControl_{map_name}) return;
+
+            const FiltroControl = L.Control.extend({{
+                options: {{ position: 'topright' }},
+                onAdd: function() {{
+                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-filtro-hoje');
+                    container.innerHTML = [
+                        '<form method="get" action="' + {acao_filtro_json} + '">',
+                        '<input type="hidden" name="filtrar_hoje" value="' + {botao_value_json} + '">',
+                        '<button type="submit">' + {botao_texto_json} + '</button>',
+                        '</form>'
+                    ].join('');
+
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.disableScrollPropagation(container);
+                    return container;
+                }}
+            }});
+
+            window.todayFilterControl_{map_name} = new FiltroControl();
+            mapa.addControl(window.todayFilterControl_{map_name});
+        }}
+
+        setTimeout(adicionarControleFiltroHoje_{map_name}, 0);
+    </script>
     '''
 
 
@@ -5132,6 +5146,7 @@ def mapa_eventos(
         mapa.get_root().html.add_child(
             folium.Element(
                 painel_filtro_hoje_mapa_html(
+                    map_name=map_name,
                     acao_filtro=acao_filtro_mapa,
                     filtrar_hoje=filtrar_hoje_normalizado,
                 )
