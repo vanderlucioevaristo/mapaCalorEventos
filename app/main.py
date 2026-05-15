@@ -936,6 +936,14 @@ def recursos_rota_mapa_html(map_name: str, acao_filtro: str = "", filtrar_hoje: 
             cursor: pointer;
             box-shadow: 0 8px 20px rgba(0,0,0,0.12);
         }}
+        .leaflet-control-user-location {{
+            position: fixed !important;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            margin: 0 !important;
+            z-index: 1100;
+        }}
         .leaflet-control-user-location button:hover {{
             background: #1e40af;
         }}
