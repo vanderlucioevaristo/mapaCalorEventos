@@ -771,7 +771,7 @@ def painel_filtro_hoje_mapa_html(acao_filtro: str, filtrar_hoje: bool) -> str:
 
     return f'''
     <div style="position: fixed;
-                top: 64px; right: 14px; z-index: 9999;
+                bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9999;
                 background: rgba(255,255,255,0.96);
                 border: 1px solid #d1d5db;
                 border-radius: 12px;
@@ -812,6 +812,53 @@ def recursos_rota_mapa_html(map_name: str) -> str:
     map_name_json = json.dumps(map_name)
     return f'''
     <style>
+        .leaflet-control-mapa-busca {{
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+            padding: 6px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }}
+        .leaflet-control-mapa-busca input {{
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 8px;
+            min-width: 220px;
+            font-size: 12px;
+            outline: none;
+        }}
+        .leaflet-control-mapa-busca button {{
+            border: none;
+            border-radius: 6px;
+            background: #0f766e;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 10px;
+            cursor: pointer;
+        }}
+        .leaflet-control-mapa-busca button:hover {{
+            background: #115e59;
+        }}
+        .leaflet-control-user-location button {{
+            width: 34px;
+            height: 34px;
+            border: none;
+            border-radius: 6px;
+            background: #1d4ed8;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }}
+        .leaflet-control-user-location button:hover {{
+            background: #1e40af;
+        }}
         .leaflet-control-clear-route button {{
             background: #b91c1c;
             color: #fff;
@@ -844,6 +891,8 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         window.selectedOrigin_{map_name} = null;
         window.routeDistanceControl_{map_name} = null;
         window.routeDistanceContainer_{map_name} = null;
+        window.searchMarker_{map_name} = null;
+        window.userLocationMarker_{map_name} = null;
 
         function formatarDistancia_{map_name}(metros) {{
             if (!Number.isFinite(metros)) return '--';
@@ -908,6 +957,138 @@ def recursos_rota_mapa_html(map_name: str) -> str:
                 window.routeDistanceContainer_{map_name}.style.display = 'none';
                 window.routeDistanceContainer_{map_name}.innerHTML = '';
             }}
+        }}
+
+        function centralizarNoEndereco_{map_name}(latitude, longitude, nomeEndereco) {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (window.searchMarker_{map_name}) {{
+                mapa.removeLayer(window.searchMarker_{map_name});
+            }}
+
+            window.searchMarker_{map_name} = L.marker([latitude, longitude])
+                .addTo(mapa)
+                .bindPopup(nomeEndereco || 'Endereço encontrado');
+
+            mapa.setView([latitude, longitude], 16);
+            window.searchMarker_{map_name}.openPopup();
+        }}
+
+        async function buscarEnderecoMapa_{map_name}(query) {{
+            const textoBusca = (query || '').trim();
+            if (!textoBusca) {{
+                alert('Digite um endereço para buscar no mapa.');
+                return;
+            }}
+
+            try {{
+                const resp = await fetch(`/api/geocodificar?endereco=${{encodeURIComponent(textoBusca)}}`);
+                const dados = await resp.json();
+                if (!resp.ok || !Number.isFinite(Number(dados.latitude)) || !Number.isFinite(Number(dados.longitude))) {{
+                    throw new Error('Endereço não encontrado');
+                }}
+                centralizarNoEndereco_{map_name}(Number(dados.latitude), Number(dados.longitude), textoBusca);
+            }} catch (error) {{
+                alert('Não foi possível localizar este endereço.');
+            }}
+        }}
+
+        function adicionarControleBuscaEndereco_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.addressSearchControl_{map_name}) return;
+
+            const BuscaControl = L.Control.extend({{
+                options: {{ position: 'topleft' }},
+                onAdd: function() {{
+                    const container = L.DomUtil.create('div', 'leaflet-control-mapa-busca');
+                    const input = L.DomUtil.create('input', '', container);
+                    input.type = 'text';
+                    input.placeholder = 'Buscar endereço...';
+                    input.setAttribute('aria-label', 'Buscar endereço');
+
+                    const button = L.DomUtil.create('button', '', container);
+                    button.type = 'button';
+                    button.innerText = 'Buscar';
+
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.disableScrollPropagation(container);
+
+                    L.DomEvent.on(button, 'click', function() {{
+                        buscarEnderecoMapa_{map_name}(input.value);
+                    }});
+
+                    L.DomEvent.on(input, 'keydown', function(ev) {{
+                        if (ev.key === 'Enter') {{
+                            L.DomEvent.preventDefault(ev);
+                            buscarEnderecoMapa_{map_name}(input.value);
+                        }}
+                    }});
+
+                    return container;
+                }}
+            }});
+
+            window.addressSearchControl_{map_name} = new BuscaControl();
+            mapa.addControl(window.addressSearchControl_{map_name});
+        }}
+
+        function centralizarNaLocalizacaoAtual_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa) return;
+
+            if (!navigator.geolocation) {{
+                alert('Geolocalização não disponível neste navegador.');
+                return;
+            }}
+
+            navigator.geolocation.getCurrentPosition(
+                function(posicao) {{
+                    const lat = Number(posicao.coords.latitude);
+                    const lon = Number(posicao.coords.longitude);
+
+                    if (window.userLocationMarker_{map_name}) {{
+                        mapa.removeLayer(window.userLocationMarker_{map_name});
+                    }}
+
+                    window.userLocationMarker_{map_name} = L.marker([lat, lon])
+                        .addTo(mapa)
+                        .bindPopup('Você está aqui');
+
+                    mapa.setView([lat, lon], Math.max(mapa.getZoom(), 15));
+                    window.userLocationMarker_{map_name}.openPopup();
+                }},
+                function() {{
+                    alert('Não foi possível obter sua localização atual.');
+                }},
+                {{ enableHighAccuracy: true, timeout: 10000 }}
+            );
+        }}
+
+        function adicionarControleLocalizacaoAtual_{map_name}() {{
+            const mapa = window[{map_name_json}];
+            if (!mapa || window.userLocationControl_{map_name}) return;
+
+            const LocalizacaoControl = L.Control.extend({{
+                options: {{ position: 'topright' }},
+                onAdd: function() {{
+                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-user-location');
+                    const button = L.DomUtil.create('button', '', container);
+                    button.type = 'button';
+                    button.title = 'Ir para minha localização';
+                    button.setAttribute('aria-label', 'Ir para minha localização');
+                    button.innerHTML = '&#x2316;';
+
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.on(button, 'click', function() {{
+                        centralizarNaLocalizacaoAtual_{map_name}();
+                    }});
+                    return container;
+                }}
+            }});
+
+            window.userLocationControl_{map_name} = new LocalizacaoControl();
+            mapa.addControl(window.userLocationControl_{map_name});
         }}
 
         function adicionarControleLimparRota_{map_name}() {{
@@ -1060,6 +1241,8 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         }}
 
         setTimeout(adicionarControleLimparRota_{map_name}, 0);
+        setTimeout(adicionarControleBuscaEndereco_{map_name}, 0);
+        setTimeout(adicionarControleLocalizacaoAtual_{map_name}, 0);
         setTimeout(configurarRastreioPopup_{map_name}, 0);
     </script>
     '''
@@ -2679,6 +2862,23 @@ def home(request: Request):
 @app.get("/version", response_model=schemas.VersionResponse, tags=["Sistema"], summary="Versão da aplicação")
 def version():
     return {"app": "mapaCalorEventos", "version": APP_VERSION}
+
+
+@app.get("/api/geocodificar", tags=["Sistema"], summary="Geocodifica um endereço")
+def geocodificar_endereco_api(endereco: str):
+    endereco_limpo = (endereco or "").strip()
+    if not endereco_limpo:
+        raise HTTPException(status_code=400, detail="Informe um endereço para busca.")
+
+    latitude, longitude = geocodificar_endereco(endereco_limpo)
+    if latitude is None or longitude is None:
+        raise HTTPException(status_code=404, detail="Endereço não encontrado.")
+
+    return {
+        "endereco": endereco_limpo,
+        "latitude": latitude,
+        "longitude": longitude,
+    }
 
 
 def _rotulo_estado(estado: Estado) -> str:
