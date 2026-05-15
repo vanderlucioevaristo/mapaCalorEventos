@@ -761,26 +761,14 @@ def atalho_inicio_mapa_html() -> str:
     '''
 
 
-def painel_filtro_mes_mapa_html(
-    meses_disponiveis: list[tuple[int, int]],
-    mes_selecionado: str,
-    tipo_evento_selecionado: str,
-    acao_filtro: str,
-) -> str:
-    opcoes_tipo_evento = ['<option value="Todos">Todos</option>']
-    for tipo in TIPOS_EVENTO:
-        selected = " selected" if tipo == tipo_evento_selecionado else ""
-        opcoes_tipo_evento.append(f'<option value="{escape(tipo)}"{selected}>{escape(tipo)}</option>')
+def painel_filtro_hoje_mapa_html(acao_filtro: str, filtrar_hoje: bool) -> str:
+    if filtrar_hoje:
+        botao_texto = "Mostrar todos"
+        botao_value = "false"
+    else:
+        botao_texto = "Eventos de hoje"
+        botao_value = "true"
 
-    opcoes = ['<option value="Todos">Todos</option>']
-    for ano, mes in meses_disponiveis:
-        valor = f"{ano:04d}-{mes:02d}"
-        label_mes = meses_pt[mes] if 1 <= mes <= 12 else str(mes)
-        selected = " selected" if valor == mes_selecionado else ""
-        opcoes.append(f'<option value="{valor}"{selected}>{escape(label_mes)} {ano}</option>')
-
-    opcoes_tipo_evento_html = "".join(opcoes_tipo_evento)
-    opcoes_html = "".join(opcoes)
     return f'''
     <div style="position: fixed;
                 top: 64px; right: 14px; z-index: 9999;
@@ -790,16 +778,9 @@ def painel_filtro_mes_mapa_html(
                 padding: 10px 12px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.14);">
         <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0; flex-wrap:wrap;">
-            <label for="filtro_tipo_evento" style="font-weight:700; color:#111827;">Tipo:</label>
-            <select id="filtro_tipo_evento" name="tipo_evento" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:150px;">
-                {opcoes_tipo_evento_html}
-            </select>
-            <label for="filtro_mes" style="font-weight:700; color:#111827;">Mês:</label>
-            <select id="filtro_mes" name="mes" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; min-width:160px;">
-                {opcoes_html}
-            </select>
+            <input type="hidden" name="filtrar_hoje" value="{botao_value}">
             <button type="submit" style="padding:7px 10px; border:none; border-radius:8px; background:#1d4ed8; color:#fff; font-weight:700; cursor:pointer;">
-                Filtrar
+                {escape(botao_texto)}
             </button>
         </form>
     </div>
@@ -4847,8 +4828,7 @@ def eventos_por_porte(request: Request, porte: str):
 @app.get("/mapa", response_class=HTMLResponse)
 def mapa_eventos(
     request: Request,
-    mes: str = "Todos",
-    tipo_evento: str = "Todos",
+    filtrar_hoje: Optional[str] = None,
     _publico: bool = False,
 ):
     if not _publico:
@@ -4862,37 +4842,18 @@ def mapa_eventos(
 
     estado_id, municipio_id = _obter_localidade_sessao(request, _publico=_publico)
 
+    filtrar_hoje_normalizado = str(filtrar_hoje or "").strip().lower() in {"1", "true", "yes", "on"}
+
     db: Session = SessionLocal()
     try:
         eventos = db.query(Evento).join(Local).filter(Local.municipio_id == municipio_id).all()
-        tipo_evento_selecionado = tipo_evento if tipo_evento in TIPOS_EVENTO else "Todos"
-        if tipo_evento_selecionado != "Todos":
+        if filtrar_hoje_normalizado:
+            hoje = datetime.now().date()
             eventos = [
                 evento
                 for evento in eventos
-                if normalizar_tipo_evento(evento.tipo_evento) == tipo_evento_selecionado
+                if evento.data_inicio and evento.data_fim and evento.data_inicio <= hoje <= evento.data_fim
             ]
-
-        meses_disponiveis_set = {
-            (evento.data_inicio.year, evento.data_inicio.month)
-            for evento in eventos
-            if evento.data_inicio
-        }
-        meses_disponiveis = sorted(meses_disponiveis_set)
-        mes_selecionado = "Todos"
-        match_mes = re.fullmatch(r"(\d{4})-(\d{2})", (mes or "").strip())
-        if match_mes:
-            ano_sel = int(match_mes.group(1))
-            mes_sel = int(match_mes.group(2))
-            if (ano_sel, mes_sel) in meses_disponiveis_set:
-                mes_selecionado = f"{ano_sel:04d}-{mes_sel:02d}"
-                eventos = [
-                    evento
-                    for evento in eventos
-                    if evento.data_inicio
-                    and evento.data_inicio.year == ano_sel
-                    and evento.data_inicio.month == mes_sel
-                ]
 
         acao_filtro_mapa = "/public/mapa" if _publico else "/mapa"
         anunciantes = db.query(Anunciante).all()
@@ -4915,11 +4876,9 @@ def mapa_eventos(
             mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         mapa.get_root().html.add_child(
             folium.Element(
-                painel_filtro_mes_mapa_html(
-                    meses_disponiveis=meses_disponiveis,
-                    mes_selecionado=mes_selecionado,
-                    tipo_evento_selecionado=tipo_evento_selecionado,
+                painel_filtro_hoje_mapa_html(
                     acao_filtro=acao_filtro_mapa,
+                    filtrar_hoje=filtrar_hoje_normalizado,
                 )
             )
         )
@@ -5005,10 +4964,9 @@ def mapa_eventos(
 @app.get("/public/mapa", response_class=HTMLResponse)
 def mapa_eventos_publico(
     request: Request,
-    mes: str = "Todos",
-    tipo_evento: str = "Todos",
+    filtrar_hoje: Optional[str] = None,
 ):
-    return mapa_eventos(request, mes=mes, tipo_evento=tipo_evento, _publico=True)
+    return mapa_eventos(request, filtrar_hoje=filtrar_hoje, _publico=True)
 
 
 @app.get(
