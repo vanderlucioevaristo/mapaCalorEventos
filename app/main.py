@@ -862,8 +862,13 @@ def botao_voltar_portal_html(
     return f'<a href="{PORTAL_PUBLICO_PATH}" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
-def recursos_rota_mapa_html(map_name: str) -> str:
+def recursos_rota_mapa_html(map_name: str, acao_filtro: str = "", filtrar_hoje: bool = False) -> str:
     map_name_json = json.dumps(map_name)
+    acao_filtro_json = json.dumps(acao_filtro)
+    botao_texto = "All" if filtrar_hoje else "Today"
+    botao_value = "false" if filtrar_hoje else "true"
+    botao_texto_json = json.dumps(botao_texto)
+    botao_value_json = json.dumps(botao_value)
     return f'''
     <style>
         .leaflet-control-mapa-busca {{
@@ -946,6 +951,32 @@ def recursos_rota_mapa_html(map_name: str) -> str:
         }}
         .leaflet-control-clear-route button:hover {{
             background: #991b1b;
+        }}
+        .leaflet-control-route-actions {{
+            clear: none !important;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: max-content;
+            max-width: calc(100vw - 20px);
+        }}
+        .leaflet-control-route-actions form {{
+            margin: 0;
+        }}
+        .leaflet-control-route-actions .leaflet-control-filtro-hoje {{
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+            width: auto;
+            max-width: none;
+        }}
+        .leaflet-control-route-actions .leaflet-control-filtro-hoje button,
+        .leaflet-control-route-actions .leaflet-control-clear-route button {{
+            min-height: 34px;
+        }}
+        .leaflet-control-route-actions .leaflet-control-filtro-hoje button {{
+            background: #1d4ed8;
         }}
         .leaflet-control-route-distance {{
             background: #ffffff;
@@ -1173,11 +1204,29 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             const ClearControl = L.Control.extend({{
                 options: {{ position: 'topright' }},
                 onAdd: function() {{
-                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-clear-route');
-                    const button = L.DomUtil.create('button', '', container);
+                    const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-route-actions');
+
+                    const filtroForm = L.DomUtil.create('form', 'leaflet-control-filtro-hoje', container);
+                    filtroForm.method = 'get';
+                    filtroForm.action = {acao_filtro_json};
+
+                    const filtroInput = L.DomUtil.create('input', '', filtroForm);
+                    filtroInput.type = 'hidden';
+                    filtroInput.name = 'filtrar_hoje';
+                    filtroInput.value = {botao_value_json};
+
+                    const filtroButton = L.DomUtil.create('button', '', filtroForm);
+                    filtroButton.type = 'submit';
+                    filtroButton.innerText = {botao_texto_json};
+
+                    const button = L.DomUtil.create('button', 'leaflet-control-clear-route', container);
                     button.type = 'button';
                     button.innerText = 'Limpar rota';
                     L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.disableScrollPropagation(container);
+                    L.DomEvent.on(filtroForm, 'click', function(ev) {{
+                        L.DomEvent.stopPropagation(ev);
+                    }});
                     L.DomEvent.on(button, 'click', function() {{
                         limparRotaMapa_{map_name}();
                     }});
@@ -4981,7 +5030,15 @@ def mapa_locais(request: Request, _publico: bool = False):
         if bounds_estado: 
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
-        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
+        mapa.get_root().header.add_child(
+            folium.Element(
+                recursos_rota_mapa_html(
+                    map_name,
+                    acao_filtro=acao_filtro_mapa,
+                    filtrar_hoje=filtrar_hoje_normalizado,
+                )
+            )
+        )
         if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
             mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
 
@@ -5140,18 +5197,17 @@ def mapa_eventos(
         if bounds_estado:
             mapa.fit_bounds(bounds_estado, padding=(24, 24))
         map_name = mapa.get_name()
-        mapa.get_root().header.add_child(folium.Element(recursos_rota_mapa_html(map_name)))
-        if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
-            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
-        mapa.get_root().html.add_child(
+        mapa.get_root().header.add_child(
             folium.Element(
-                painel_filtro_hoje_mapa_html(
-                    map_name=map_name,
+                recursos_rota_mapa_html(
+                    map_name,
                     acao_filtro=acao_filtro_mapa,
                     filtrar_hoje=filtrar_hoje_normalizado,
                 )
             )
         )
+        if EXIBIR_BOTAO_VOLTAR_PORTAL_CALENDARIO:
+            mapa.get_root().html.add_child(folium.Element(atalho_inicio_mapa_html()))
         cluster_eventos = MarkerCluster(name="Eventos").add_to(mapa)
         bounds_por_regional: dict[str, dict[str, float]] = {}
 
