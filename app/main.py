@@ -770,16 +770,56 @@ def painel_filtro_hoje_mapa_html(acao_filtro: str, filtrar_hoje: bool) -> str:
         botao_value = "true"
 
     return f'''
-    <div style="position: fixed;
-                bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9999;
-                background: rgba(255,255,255,0.96);
-                border: 1px solid #d1d5db;
-                border-radius: 12px;
-                padding: 10px 12px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.14);">
-        <form method="get" action="{escape(acao_filtro)}" style="display:flex; align-items:center; gap:8px; margin:0; flex-wrap:wrap;">
+    <style>
+        .painel-filtro-hoje-mapa {{
+            position: fixed;
+            bottom: max(12px, env(safe-area-inset-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            background: rgba(255,255,255,0.96);
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            padding: 10px 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.14);
+            width: max-content;
+            max-width: calc(100vw - 20px);
+        }}
+        .painel-filtro-hoje-mapa form {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            flex-wrap: wrap;
+        }}
+        .painel-filtro-hoje-mapa button {{
+            padding: 7px 10px;
+            border: none;
+            border-radius: 8px;
+            background: #1d4ed8;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }}
+        @media (max-width: 640px) {{
+            .painel-filtro-hoje-mapa {{
+                left: 10px;
+                right: 10px;
+                transform: none;
+                width: auto;
+            }}
+            .painel-filtro-hoje-mapa form {{
+                justify-content: center;
+            }}
+            .painel-filtro-hoje-mapa button {{
+                width: 100%;
+            }}
+        }}
+    </style>
+    <div class="painel-filtro-hoje-mapa">
+        <form method="get" action="{escape(acao_filtro)}">
             <input type="hidden" name="filtrar_hoje" value="{botao_value}">
-            <button type="submit" style="padding:7px 10px; border:none; border-radius:8px; background:#1d4ed8; color:#fff; font-weight:700; cursor:pointer;">
+            <button type="submit">
                 {escape(botao_texto)}
             </button>
         </form>
@@ -821,12 +861,16 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             display: flex;
             gap: 6px;
             align-items: center;
+            width: min(520px, calc(100vw - 24px));
+            box-sizing: border-box;
         }}
         .leaflet-control-mapa-busca input {{
             border: 1px solid #cbd5e1;
             border-radius: 6px;
             padding: 6px 8px;
-            min-width: 220px;
+            min-width: 0;
+            width: 100%;
+            flex: 1 1 auto;
             font-size: 12px;
             outline: none;
         }}
@@ -839,9 +883,26 @@ def recursos_rota_mapa_html(map_name: str) -> str:
             font-weight: 700;
             padding: 6px 10px;
             cursor: pointer;
+            white-space: nowrap;
+            flex: 0 0 auto;
         }}
         .leaflet-control-mapa-busca button:hover {{
             background: #115e59;
+        }}
+        @media (max-width: 640px) {{
+            .leaflet-control-mapa-busca {{
+                width: calc(100vw - 24px);
+                padding: 4px;
+                gap: 4px;
+            }}
+            .leaflet-control-mapa-busca input {{
+                font-size: 14px;
+                padding: 8px;
+            }}
+            .leaflet-control-mapa-busca button {{
+                font-size: 13px;
+                padding: 8px 10px;
+            }}
         }}
         .leaflet-control-user-location button {{
             width: 34px;
