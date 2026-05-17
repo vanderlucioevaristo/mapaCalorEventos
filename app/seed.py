@@ -10,6 +10,17 @@ Base.metadata.create_all(bind=engine)
 BASE_DIR = Path(__file__).resolve().parents[1]
 EVENTOS_CSV = BASE_DIR / "data" / "eventos.csv"
 
+
+def normalizar_tipo_evento_csv(valor) -> str:
+    if pd.isna(valor):
+        return "Negócios"
+
+    tipo = str(valor).strip()
+    if not tipo or tipo.lower() == "nan":
+        return "Negócios"
+
+    return tipo
+
 def parse_date(date_str):
     date_str = str(date_str).strip()
     # Formato "17 a 18/06" ou "12 a 13/08" — pega o último número antes de /MM e assume ano corrente/próximo
@@ -54,6 +65,7 @@ def seed():
         locais_dict = {}
         for _, row in df.iterrows():
             local_nome = row["LOCAL"]
+            tipo_evento_csv = normalizar_tipo_evento_csv(row.get("TIPOEVENTO", ""))
             if local_nome not in locais_dict:
                 local = Local(
                     nome=local_nome,
@@ -61,7 +73,7 @@ def seed():
                     regiao=row["REGIAO"],
                     latitude=row["LATITUDE"],
                     longitude=row["LONGITUDE"],
-                    tipo_evento="Negócios",
+                    tipo_evento=tipo_evento_csv,
                     acessibilidade=True,
                     proximo_metro=True,
                     restaurantes=True,
@@ -73,6 +85,7 @@ def seed():
         # Criar eventos
         for _, row in df.iterrows():
             local_id = locais_dict[row["LOCAL"]]
+            tipo_evento_csv = normalizar_tipo_evento_csv(row.get("TIPOEVENTO", ""))
             evento = Evento(
                 nome=row["EVENTO"],
                 descricao=row["DESCRICAO"],
@@ -80,7 +93,7 @@ def seed():
                 data_fim=parse_date(row["DATA_FIM"]),
                 publico_estimado=row["PUBLICO_ESTIMADO"],
                 porte=row["PORTE_EVENTO"],
-                tipo_evento="Negócios",
+                tipo_evento=tipo_evento_csv,
                 local_id=local_id
             )
             db.add(evento)
