@@ -74,7 +74,7 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 Base.metadata.create_all(bind=engine)
 
-TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso"]
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso", "Cultural"]
 ESTADO_PADRAO_NOME = "Minas Gerais"
 ESTADO_PADRAO_SIGLA = "MG"
 MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
@@ -91,6 +91,7 @@ def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
         "negócios": "Negócios",
         "turismo": "Turismo",
         "religioso": "Religioso",
+        "cultural": "Cultural",
     }
     if tipo_normalizado in aliases:
         return aliases[tipo_normalizado]
@@ -542,6 +543,8 @@ def obter_cor_tipo_evento(tipo_evento: str) -> tuple:
         return ("#10b981", "✈️", "Turismo")
     elif tipo == "religioso":
         return ("#7c3aed", "⛪", "Religioso")
+    elif tipo == "cultural":
+        return ("#f97316", "🎭", "Cultural")
     else:
         return ("#6b7280", "📍", tipo_evento or "Evento")
 
@@ -862,11 +865,17 @@ def botao_voltar_portal_html(
     return f'<a href="{PORTAL_PUBLICO_PATH}" style="{estilo}">&#8592; {escape(label)}</a>'
 
 
-def recursos_rota_mapa_html(map_name: str, acao_filtro: str = "", filtrar_hoje: bool = False) -> str:
+def recursos_rota_mapa_html(
+    map_name: str,
+    acao_filtro: str = "",
+    filtrar_hoje: bool = False,
+    exibir_filtro_hoje: bool = True,
+) -> str:
     map_name_json = json.dumps(map_name)
     acao_filtro_json = json.dumps(acao_filtro)
     botao_texto = "All" if filtrar_hoje else "Today"
     botao_value = "false" if filtrar_hoje else "true"
+    exibir_filtro_hoje_json = "true" if exibir_filtro_hoje else "false"
     botao_texto_json = json.dumps(botao_texto)
     botao_value_json = json.dumps(botao_value)
     return f'''
@@ -1213,28 +1222,34 @@ def recursos_rota_mapa_html(map_name: str, acao_filtro: str = "", filtrar_hoje: 
                 options: {{ position: 'topright' }},
                 onAdd: function() {{
                     const container = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-route-actions');
+                    const exibirFiltroHoje = {exibir_filtro_hoje_json};
 
-                    const filtroForm = L.DomUtil.create('form', 'leaflet-control-filtro-hoje', container);
-                    filtroForm.method = 'get';
-                    filtroForm.action = {acao_filtro_json};
+                    let filtroForm = null;
+                    if (exibirFiltroHoje) {{
+                        filtroForm = L.DomUtil.create('form', 'leaflet-control-filtro-hoje', container);
+                        filtroForm.method = 'get';
+                        filtroForm.action = {acao_filtro_json};
 
-                    const filtroInput = L.DomUtil.create('input', '', filtroForm);
-                    filtroInput.type = 'hidden';
-                    filtroInput.name = 'filtrar_hoje';
-                    filtroInput.value = {botao_value_json};
+                        const filtroInput = L.DomUtil.create('input', '', filtroForm);
+                        filtroInput.type = 'hidden';
+                        filtroInput.name = 'filtrar_hoje';
+                        filtroInput.value = {botao_value_json};
 
-                    const filtroButton = L.DomUtil.create('button', '', filtroForm);
-                    filtroButton.type = 'submit';
-                    filtroButton.innerText = {botao_texto_json};
+                        const filtroButton = L.DomUtil.create('button', '', filtroForm);
+                        filtroButton.type = 'submit';
+                        filtroButton.innerText = {botao_texto_json};
+                    }}
 
                     const button = L.DomUtil.create('button', 'leaflet-control-clear-route', container);
                     button.type = 'button';
                     button.innerText = 'Limpar rota';
                     L.DomEvent.disableClickPropagation(container);
                     L.DomEvent.disableScrollPropagation(container);
-                    L.DomEvent.on(filtroForm, 'click', function(ev) {{
-                        L.DomEvent.stopPropagation(ev);
-                    }});
+                    if (filtroForm) {{
+                        L.DomEvent.on(filtroForm, 'click', function(ev) {{
+                            L.DomEvent.stopPropagation(ev);
+                        }});
+                    }}
                     L.DomEvent.on(button, 'click', function() {{
                         limparRotaMapa_{map_name}();
                     }});
@@ -5042,8 +5057,9 @@ def mapa_locais(request: Request, _publico: bool = False):
             folium.Element(
                 recursos_rota_mapa_html(
                     map_name,
-                    acao_filtro=acao_filtro_mapa,
-                    filtrar_hoje=filtrar_hoje_normalizado,
+                    acao_filtro="/mapa-locais" if not _publico else "/public/mapa-locais",
+                    filtrar_hoje=False,
+                    exibir_filtro_hoje=False,
                 )
             )
         )
