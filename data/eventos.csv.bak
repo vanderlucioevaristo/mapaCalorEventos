@@ -1,0 +1,39 @@
+﻿LOCAL;ENDERECO;REGIAO;LATITUDE;LONGITUDE;EVENTO;DESCRICAO;DATA_INICIO;HORAINICIO;DATA_FIM;PUBLICO_ESTIMADO;PORTE_EVENTO;TIPOEVENTO
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;THE BEAST EXPERIENCE SYMPHONIC;Espetáculo sinfônico inspirado em Iron Maiden;2026-08-02;19:00;2026-08-02;1200;MÉDIO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;MICHAEL JACKSON - LIVE EXPERIENCE;Tributo ao Michael Jackson;2026-07-25;19:00;2026-07-25;1200;MÉDIO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;STORIES OF SURRENDER COM MARCELO ANTUNES;Show tributo ao U2;2026-05-23;19:00;2026-05-23;900;PEQUENO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;DELSON GUIMARÃES APRESENTA HERMELÉTICA;Show instrumental autoral;2026-05-24;18:00;2026-05-24;700;PEQUENO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;SHOW DE LANÇAMENTO: NA BOCA DA NOITE - JOANA ROCHAEL;Lançamento de álbum solo;2026-05-17;18:00;2026-05-17;700;PEQUENO;Cultural
+Grande Teatro Cemig Palácio das Artes;Av. Afonso Pena, 1537 - Centro;Centro-Sul;-19.9268;-43.9345;TURNÊ BRASIL – ELI SOARES;Turnê nacional gospel;2026-05-18;20:00;2026-05-18;1700;MÉDIO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;MATEUS ASATO - ASATOUR;Show instrumental de guitarra;2026-09-03;20:00;2026-09-03;1200;MÉDIO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;A LUREX – QUEEN TRIBUTE APRESENTA: DON'T STOP ME NOW;Tributo ao Queen;2026-06-06;21:00;2026-06-07;1200;MÉDIO;Cultural
+Arena Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;RUSH: FIFTY SOMETHING TOUR BH;Turnê internacional do Rush;2027-02-01;16:00;2027-02-01;6000;GRANDE;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;MOSTRA CINE THEATRO BRASIL DE MÚSICA CONVIDA: ORQUESTRA OPUS E CHICO CHICO;Concerto especial;2026-06-19;20:00;2026-06-19;1200;MÉDIO;Cultural
+Mineirão;Av. Antônio Abrahão Caram, 1001 - Pampulha;Pampulha;-19.8659;-43.971;ZECA & ALCIONE & ARAGÃO: O MAIOR ENCONTRO DO SAMBA - BH;Grande encontro do samba;2026-11-28;20:00;2026-11-29;45000;MEGA;Cultural
+Mister Rock;Av. Teresa Cristina, 295 - Prado;Oeste;-19.9306;-43.962;EDU FALASCHI – MI’RAJ TOUR;Show de heavy metal;2026-08-08;21:00;2026-08-09;2500;MÉDIO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;QUARTETINHO APRESENTA CAETANO E GIL EM JAZZ;Jazz em homenagem a Caetano e Gil;2026-07-26;18:00;2026-07-26;900;PEQUENO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;JOVI BRASIL BANDA;Show tributo Bon Jovi;2026-06-21;18:00;2026-06-21;1000;PEQUENO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;CADU DE ANDRADE APRESENTA: NANA, A MAIS FINA FLOR;Tributo musical;2026-06-26;20:00;2026-06-26;900;PEQUENO;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;SHOW BEE GEES BRAZIL: EMBALOS DE SÁBADO À NOITE;Tributo Bee Gees;2026-08-22;19:00;2026-08-22;1200;MÉDIO;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;BARÃO VERMELHO - ENCONTRO BH;Reunião da formação original;2026-09-26;21:00;2026-09-27;4000;GRANDE;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;EMICIDA RACIONAL MCMV TOUR - BH;Turnê do Emicida;2026-09-05;21:00;2026-09-06;4000;GRANDE;Cultural
+Cine Theatro Brasil;Av. Amazonas, 315 - Centro;Centro-Sul;-19.9191;-43.9378;PEDRA LETÍCIA – TOUR 2026;Turnê comemorativa;2026-09-20;20:00;2026-09-20;1200;MÉDIO;Cultural
+Teatro Francisco Nunes;Av. Afonso Pena, 1321 - Centro;Centro-Sul;-19.9235;-43.935;EPOPBH - FESTIVAL DE MÚSICA POP;Festival de música pop autoral;2026-09-24;20:00;2026-09-25;1800;MÉDIO;Cultural
+Centro Cultural Banco do Brasil;Praça da Liberdade, 450 - Funcionários;Centro-Sul;-19.9321258;-43.9372222;"Musical ""Romeu e Julieta de Parintins – Ecos da Selva""";Espetáculo musical inspirado em Romeu e Julieta;2026-05-08;20:00;2026-06-15;1200;MÉDIO;Cultural
+Cine Humberto Mauro;Avenida Afonso Pena, 1537 - Centro;Centro-Sul;-19.9257944;-43.9343075;De Lá Pra Cá: Uma Mostra da Varda;Mostra audiovisual e cinema;2026-05-14;09:30;2026-06-07;600;PEQUENO;Cultural
+Grande Teatro Cemig Palácio das Artes;Avenida Afonso Pena, 1537 - Centro;Centro-Sul;-19.9257;-43.9343;"Espetáculo: ""A Lenda da Serpente"" - Companhia Nacional da Ópera de Pequim";Ópera e artes cênicas internacionais;2026-05-16;20:30;2026-05-16;1700;MÉDIO;Cultural
+Teatro Joanna de Ângelis;Rua Diamantina, 463 - Lagoinha;Noroeste;-19.9097;-43.9446;"Espetáculo: Joanna de Ângelis ""Transição""";Espetáculo teatral espírita;2026-05-16;20:00;2026-05-16;800;PEQUENO;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;SIMPLESMENTE ROUPA NOVA;Show da banda Roupa Nova;2026-08-22;21:00;2026-08-23;4000;GRANDE;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;BACO EXU DO BLUES;Show nacional de rap e MPB;2026-07-25;22:00;2026-07-26;4000;GRANDE;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;ALCEU VALENÇA 80 GIRASSÓIS;Turnê comemorativa de Alceu Valença;2026-06-20;22:00;2026-06-21;4000;GRANDE;Cultural
+Parque Ecológico da Pampulha;Av. Otacílio Negrão de Lima, 6061 - Pampulha;Pampulha;-19.8519;-43.9803;FESTIVAL SENSACIONAL! 2026;Festival multicultural com atrações nacionais;2026-08-08;12:00;2026-08-09;20000;MEGA;Cultural
+Área Externa do Mineirinho;Av. Antônio Abrahão Caram, 1000 - Pampulha;Pampulha;-19.8668;-43.9714;RAP GAME FESTIVAL 2026;Festival de rap e hip hop;2026-04-11;11:00;2026-04-11;15000;GRANDE;Cultural
+Arena MRV;Rua Cristina Maria de Assis, 202 - Califórnia;Noroeste;-19.9227;-44.0154;THE SEND BRASIL 2026;Evento cristão musical e espiritual;2026-01-31;09:00;2026-01-31;45000;MEGA;Cultural
+Parque Municipal das Mangabeiras;Av. José do Patrocínio Pontes, 580 - Mangabeiras;Centro-Sul;-19.9504;-43.9132;WE LOVE BH 2026;Festival de música eletrônica;2026-03-14;16:00;2026-03-15;12000;GRANDE;Cultural
+BeFly Minascentro;Av. Augusto de Lima, 785 - Centro;Centro-Sul;-19.9208;-43.9406;DIOGO NOGUEIRA - INFINITO SAMBA TOUR 20 ANOS;Turnê comemorativa de samba;2026-06-07;19:00;2026-06-07;3500;GRANDE;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;ANAVITÓRIA – TURNÊ DOS NAMORADOS 2026;Show da dupla ANAVITÓRIA;2026-06-04;21:00;2026-06-05;4000;GRANDE;Cultural
+BeFly Hall;Av. Nossa Senhora do Carmo, 230 - Savassi;Centro-Sul;-19.9442;-43.9342;LOBÃO;Show nacional de rock;2026-05-16;22:00;2026-05-17;3500;GRANDE;Cultural
+Clube de Jazz do Café com Letras;Rua Antônio de Albuquerque, 781 - Savassi;Centro-Sul;-19.9398;-43.9347;Happy Feet Jazz Band;Show de jazz instrumental;2026-05-12;20:00;2026-05-12;300;PEQUENO;Cultural
+Sala Juvenal Dias;Av. Afonso Pena, 1537 - Centro;Centro-Sul;-19.9257;-43.9343;TUTO FERRAZ QUARTETO;Concerto instrumental de jazz;2026-05-15;20:00;2026-05-15;500;PEQUENO;Cultural
+Teatro do Centro Cultural Unimed-BH Minas;Rua da Bahia, 2244 - Lourdes;Centro-Sul;-19.9328;-43.9422;CONCERTO – DO BARROCO AO POP;Concerto clássico e contemporâneo;2026-08-27;20:00;2026-08-27;1500;MÉDIO;Cultural
+Arena MRV;Rua Cristina Maria de Assis, 202 - Califórnia;Noroeste;-19.9227;-44.0154;Conexão Belo Horizonte 2026;Festival multicultural e musical;2026-03-07;14:00;2026-03-08;18000;GRANDE;Cultural
