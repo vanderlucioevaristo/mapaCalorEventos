@@ -2,6 +2,7 @@
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import sys
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Base, engine
 from .models import Evento, Local
@@ -52,17 +53,35 @@ def parse_date(date_str):
     raise ValueError(f"Formato de data não reconhecido: {date_str!r}")
 
 
-def seed():
+def _parse_bool_arg(value: str) -> bool:
+    valor = (value or "").strip().lower()
+    if valor in {"1", "true", "t", "yes", "y", "sim", "s"}:
+        return True
+    if valor in {"0", "false", "f", "no", "n", "nao", "não", ""}:
+        return False
+    raise ValueError(
+        "Parâmetro inválido para limpar banco. Use true/false. "
+        "Exemplo: python3 -m mapaCalorEventos.app.seed true"
+    )
+
+
+def seed(limpar_antes: bool = False):
     df = pd.read_csv(EVENTOS_CSV, sep=";")
 
     db: Session = SessionLocal()
     try:
-        # Limpa os dados existentes para evitar duplicidade em reexecucoes do seed.
-        db.query(Evento).delete(synchronize_session=False)
-        db.query(Local).delete(synchronize_session=False)
+        if limpar_antes:
+            db.query(Evento).delete(synchronize_session=False)
+            db.query(Local).delete(synchronize_session=False)
+            db.flush()
+
+        # Em modo append, reaproveita locais já existentes por nome.
+        locais_dict = {}
+        if not limpar_antes:
+            locais_existentes = db.query(Local.id, Local.nome).all()
+            locais_dict = {nome: local_id for local_id, nome in locais_existentes}
 
         # Criar locais únicos
-        locais_dict = {}
         for _, row in df.iterrows():
             local_nome = row["LOCAL"]
             tipo_evento_csv = normalizar_tipo_evento_csv(row.get("TIPOEVENTO", ""))
@@ -99,7 +118,8 @@ def seed():
             db.add(evento)
 
         db.commit()
-        print("Dados inseridos 🚀")
+        modo = "(com limpeza prévia)" if limpar_antes else "(append)"
+        print(f"Dados inseridos 🚀 {modo}")
     except Exception:
         db.rollback()
         raise
@@ -108,4 +128,5 @@ def seed():
 
 
 if __name__ == "__main__":
-    seed()
+    limpar = _parse_bool_arg(sys.argv[1]) if len(sys.argv) > 1 else False
+    seed(limpar_antes=limpar)

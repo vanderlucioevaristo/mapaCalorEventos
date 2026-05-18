@@ -40,6 +40,8 @@ from pathlib import Path
 
 #  python3 -m uvicorn mapaCalorEventos.app.main:app --port 8004
 #  python3 -m mapaCalorEventos.app.seed
+#  python3 -m mapaCalorEventos.app.seed true - Para limpar o banco antes de popular com os dados do CSV. Use com cuidado, pois irá apagar todos os dados atuais.
+#  python3 -m mapaCalorEventos.app.seed - Para popular o banco com os dados do CSV sem apagar os dados atuais. Novos registros do CSV serão adicionados, mas registros existentes não serão modificados. Use quando quiser atualizar o banco com novos eventos/locais do CSV sem perder dados atuais.
 #. lsof -i :8004 | grep -v COMMAND | awk '{print $2}' | xargs kill -9
 
 BASE_DIR = Path(__file__).resolve().parents[2]
