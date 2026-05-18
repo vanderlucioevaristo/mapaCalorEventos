@@ -94,7 +94,7 @@ def seed(limpar_antes: bool = False):
                     longitude=row["LONGITUDE"],
                     tipo_evento=tipo_evento_csv,
                     acessibilidade=True,
-                    proximo_metro=True,
+                    proximo_metro=False,
                     restaurantes=True,
                 )
                 db.add(local)
