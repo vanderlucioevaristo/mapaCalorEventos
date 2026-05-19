@@ -76,7 +76,7 @@ meses_pt = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 Base.metadata.create_all(bind=engine)
 
-TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso", "Cultural"]
+TIPOS_EVENTO = ["Carnaval", "Negócios", "Turismo", "Religioso", "Cultural", "Tecnologia"]
 ESTADO_PADRAO_NOME = "Minas Gerais"
 ESTADO_PADRAO_SIGLA = "MG"
 MUNICIPIO_PADRAO_NOME = "Belo Horizonte"
@@ -94,6 +94,7 @@ def normalizar_tipo_evento(tipo_evento: Optional[str]) -> str:
         "turismo": "Turismo",
         "religioso": "Religioso",
         "cultural": "Cultural",
+        "Tecnologia": "Tecnologia",
     }
     if tipo_normalizado in aliases:
         return aliases[tipo_normalizado]
@@ -157,6 +158,8 @@ def garantir_colunas_eventos():
         colunas = {
             row[1] for row in conn.execute(text("PRAGMA table_info(eventos)"))
         }
+        if "id_evento" not in colunas:
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN id_evento TEXT"))
         if "tipo_evento" not in colunas:
             conn.execute(
                 text(
@@ -181,6 +184,17 @@ def garantir_colunas_eventos():
         conn.execute(
             text(
                 "UPDATE eventos SET hora_inicio = '09:00' WHERE hora_inicio IS NULL OR TRIM(hora_inicio) = ''"
+            )
+        )
+        conn.execute(
+            text(
+                "UPDATE eventos SET id_evento = 'legacy-' || id "
+                "WHERE id_evento IS NULL OR TRIM(id_evento) = ''"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_id_evento_unique ON eventos(id_evento)"
             )
         )
 
@@ -547,8 +561,11 @@ def obter_cor_tipo_evento(tipo_evento: str) -> tuple:
         return ("#7c3aed", "⛪", "Religioso")
     elif tipo == "cultural":
         return ("#f97316", "🎭", "Cultural")
+    elif tipo == "tecnologia":
+        return ("#2563eb", "💻", "Tecnologia")
     else:
         return ("#6b7280", "📍", tipo_evento or "Evento")
+    
 
 
 def adicionar_marcador_evento(mapa_ou_cluster, evento: Evento, map_name: str) -> None:
