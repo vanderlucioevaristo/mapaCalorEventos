@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
+from uuid import uuid4
 from .database import Base
 
 
@@ -56,6 +57,7 @@ class Evento(Base):
     __tablename__ = "eventos"
 
     id = Column(Integer, primary_key=True)
+    id_evento = Column(String, unique=True, nullable=False, default=lambda: uuid4().hex)
     nome = Column(String)
     descricao = Column(String)
     data_inicio = Column(Date)
