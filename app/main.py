@@ -1761,16 +1761,39 @@ def _hash_senha(senha: str) -> str:
 
 
 def _verificar_senha(senha: str, senha_hash: str) -> bool:
-    if not senha_hash or "$" not in senha_hash:
+    senha_texto = senha or ""
+    hash_texto = (senha_hash or "").strip()
+
+    if not hash_texto:
         return False
-    salt, esperado = senha_hash.split("$", 1)
-    derivacao = hashlib.pbkdf2_hmac(
-        "sha256",
-        (senha or "").encode("utf-8"),
-        f"{SENHA_SALT}:{salt}".encode("utf-8"),
-        120000,
-    )
-    return hmac.compare_digest(derivacao.hex(), esperado)
+
+    # Formato atual: salt$pbkdf2_hex
+    if "$" in hash_texto:
+        salt, esperado = hash_texto.split("$", 1)
+        derivacao = hashlib.pbkdf2_hmac(
+            "sha256",
+            senha_texto.encode("utf-8"),
+            f"{SENHA_SALT}:{salt}".encode("utf-8"),
+            120000,
+        )
+        return hmac.compare_digest(derivacao.hex(), esperado)
+
+    # Compatibilidade com hash legado: sha256(senha)
+    sha256_simples = hashlib.sha256(senha_texto.encode("utf-8")).hexdigest()
+    if hmac.compare_digest(sha256_simples, hash_texto):
+        return True
+
+    # Compatibilidade com hash legado: sha256(SENHA_SALT:senha)
+    sha256_com_salt = hashlib.sha256(f"{SENHA_SALT}:{senha_texto}".encode("utf-8")).hexdigest()
+    if hmac.compare_digest(sha256_com_salt, hash_texto):
+        return True
+
+    # Compatibilidade emergencial para bases antigas com senha em texto puro.
+    return hmac.compare_digest(hash_texto, senha_texto)
+
+
+def _senha_em_formato_legado(senha_hash: str) -> bool:
+    return "$" not in ((senha_hash or "").strip())
 
 
 def _usuario_para_sessao(usuario: Usuario) -> dict:
@@ -2553,6 +2576,10 @@ def login_local(
                 url=f"/login?msg=credenciais_invalidas&next={quote_plus(next_path)}",
                 status_code=303,
             )
+
+        if _senha_em_formato_legado(usuario.senha_hash):
+            usuario.senha_hash = _hash_senha(senha)
+            db.commit()
 
         request.session["user"] = _usuario_para_sessao(usuario)
         return RedirectResponse(url=next_path, status_code=303)
